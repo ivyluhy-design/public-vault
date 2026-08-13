@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>💡 想法收集器</title>
+<style>
+  :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2430;--mut:#7b8290;--line:#e4e7ec;
+        --acc:#3a7afe;--ok:#1faa6b;--no:#e0533d;--chip:#eef2fb;--warn:#b06a00;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.6}
+  .wrap{max-width:720px;margin:0 auto;padding:16px 14px 90px}
+  h1{font-size:20px;margin:4px 0 2px;display:flex;align-items:center;gap:8px}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;
+         padding:14px 16px;margin-bottom:12px}
+  /* 记录区 */
+  textarea{width:100%;min-height:88px;border:1px solid var(--line);border-radius:12px;
+           padding:12px;font-size:16px;font-family:inherit;resize:vertical;outline:none}
+  textarea:focus{border-color:var(--acc)}
+  .recbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  .rbtn{cursor:pointer;border:none;border-radius:12px;padding:10px 14px;font-size:14px;
+        font-weight:600;font-family:inherit;background:var(--chip);color:var(--ink)}
+  .rbtn.recording{background:#fde8e7;color:var(--no);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.5}}
+  .rbtn.primary{background:var(--acc);color:#fff}
+  .rbtn:disabled{opacity:.4;cursor:default}
+  .attachinfo{font-size:12px;color:var(--mut);margin-top:8px;word-break:break-all}
+  /* 时间线 */
+  .tl-card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+           padding:12px 14px;margin-bottom:10px}
+  .tl-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:8px;
+       background:var(--chip);color:var(--acc);margin-right:4px}
+  .tag.type{background:#eef7ee;color:var(--ok)}
+  .tag.cat{background:#fff3e0;color:var(--warn)}
+  .tl-time{color:var(--mut);font-size:12px;margin-left:auto}
+  .tl-body{font-size:14px;white-space:pre-wrap;word-break:break-word}
+  .tl-media{margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}
+  .tl-media img{max-width:120px;border-radius:8px;border:1px solid var(--line)}
+  .tl-media video{max-width:200px;border-radius:8px}
+  .tl-actions{margin-top:8px;display:flex;gap:8px}
+  .mini-btn{cursor:pointer;border:1px solid var(--line);border-radius:8px;padding:4px 10px;
+            font-size:12px;background:#fff;color:var(--mut);font-family:inherit}
+  .mini-btn:hover{background:var(--chip)}
+  .empty{color:var(--mut);text-align:center;padding:30px 0}
+  /* 整理弹窗 */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;z-index:99;
+         align-items:flex-end;justify-content:center}
+  .modal.show{display:flex}
+  .modal-box{background:#fff;border-radius:18px 18px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom));
+             width:100%;max-width:720px;max-height:85vh;overflow-y:auto}
+  .m-title{font-size:16px;font-weight:700;margin-bottom:12px}
+  .field{margin:10px 0}
+  .field label{display:block;font-size:13px;color:var(--mut);margin-bottom:4px}
+  .field select,.field input[type=text]{width:100%;padding:9px 10px;border:1px solid var(--line);
+        border-radius:10px;font-size:14px;font-family:inherit;background:#fff}
+  .field input[type=text]:focus,.field select:focus{border-color:var(--acc);outline:none}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{cursor:pointer;font-size:12px;padding:5px 10px;border-radius:16px;
+        background:var(--chip);color:var(--mut);user-select:none}
+  .chip.on{background:var(--acc);color:#fff}
+  .m-btns{display:flex;gap:10px;margin-top:16px}
+  .m-btns button{flex:1;padding:12px;border:none;border-radius:12px;font-size:15px;
+                 font-weight:600;font-family:inherit;cursor:pointer}
+  .b-later{background:#eef0f3;color:var(--mut)}
+  .b-save{background:var(--acc);color:#fff}
+  .b-save:disabled{opacity:.5}
+  .sync{font-size:12px;padding:3px 9px;border-radius:20px;font-weight:600;align-self:center}
+  .sync.on{background:#e7f7ec;color:#1a8a4a}
+  .sync.off{background:#f0f0f0;color:#888}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+  .toolbar input#search{padding:8px 12px;border:1px solid var(--line);border-radius:10px;
+           font-size:14px;font-family:inherit;min-width:180px;outline:none}
+  .toolbar input#search:focus{border-color:var(--acc)}
+  .toolbar button{cursor:pointer;border:none;border-radius:10px;padding:8px 12px;
+           font-size:13px;font-weight:600;font-family:inherit;background:var(--chip);color:var(--ink)}
+  .bottomnav{position:fixed;left:0;right:0;bottom:0;display:flex;gap:8px;justify-content:center;
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:var(--card);
+    border-top:1px solid var(--line);box-shadow:0 -3px 12px rgba(0,0,0,.08);z-index:60}
+  .bottomnav button{flex:1;max-width:160px;padding:13px 10px;font-size:15px;border-radius:12px;
+    border:none;cursor:pointer;font-weight:600;font-family:inherit}
+  .recording-bar{position:fixed;left:0;right:0;bottom:0;background:#fde8e7;color:var(--no);
+    text-align:center;padding:14px;font-size:15px;font-weight:600;z-index:98;display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>💡 想法收集器 <span id="syncStat" class="sync off">📴 离线（本地）</span></h1>
+  <div class="sub">三秒记一条 · 先记录后整理 · 数据存息流</div>
+
+  <div class="panel">
+    <textarea id="noteInput" placeholder="在想什么？直接打字，或按住下面语音按钮说话…"></textarea>
+    <div class="recbar">
+      <button class="rbtn" id="voiceBtn">🎤 语音</button>
+      <button class="rbtn" id="imgBtn">🖼️ 图片</button>
+      <button class="rbtn" id="videoBtn">🎬 视频</button>
+      <button class="rbtn" id="pdfBtn">📄 PDF</button>
+      <button class="rbtn primary" id="saveBtn" style="margin-left:auto">💾 立即记录</button>
+    </div>
+    <div class="attachinfo" id="attachInfo"></div>
+    <input type="file" id="fileInput" accept="image/*,video/*,application/pdf" style="display:none">
+  </div>
+
+  <div class="toolbar">
+    <input type="text" id="search" placeholder="🔍 搜索记录…">
+    <button id="recallBtn">🎲 随机回忆</button>
+  </div>
+
+  <div id="timeline"></div>
+</div>
+
+<!-- 整理弹窗 -->
+<div class="modal" id="organizeModal">
+  <div class="modal-box">
+    <div class="m-title">✅ 已记录！现在整理这条吗？</div>
+    <div class="field">
+      <label>类型</label>
+      <select id="mType">
+        <option value="想法">💭 想法</option>
+        <option value="卡片">📇 卡片</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>分类</label>
+      <select id="mCat">
+        <option value="">（暂不分类）</option>
+        <option>工作</option><option>学习</option><option>生活</option><option>灵感</option><option>其他</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>子分类</label>
+      <input type="text" id="mSub" placeholder="如：钱老师 / CPA / 读书（可空）">
+    </div>
+    <div class="field">
+      <label>出处</label>
+      <select id="mSrc">
+        <option value="">（暂不选）</option>
+        <option>自己想法</option><option>钱老师</option><option>读书</option><option>视频</option><option>其他</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>重要性</label>
+      <select id="mImp">
+        <option value="">（暂不选）</option>
+        <option>核心</option><option>参考</option><option>启发</option>
+      </select>
+    </div>
+    <div class="m-btns">
+      <button class="b-later" id="laterBtn">🚀 稍后整理</button>
+      <button class="b-save" id="organizeSaveBtn">💾 保存整理</button>
+    </div>
+  </div>
+</div>
+
+<div class="recording-bar" id="recordingBar">🎤 正在录音… 再点一次停止</div>
+
+<div class="bottomnav">
+  <button class="b-new" style="background:var(--acc);color:#fff" id="newBtn">✏️ 新记录</button>
+  <button style="background:var(--chip);color:var(--ink)" id="recallBtn2">🎲 回忆</button>
+</div>
+
+<script>
+// ============ 配置 ============
+const FLOWUS={TOKEN:'dAyB76Qzg9JYviuGy1wgd5AYaCwweBN7eX9cFVEd',DB:'883e42f1-97a0-4b16-bd70-f6b61a44f2fb',API:'https://api.flowus.cn'};
+const TOKEN_KEY='xc_fu_token_v1';
+const LS_CARDS='xc_cards_v1';
+const LS_FILES='xc_files_v1';
+if(localStorage.getItem(TOKEN_KEY)) FLOWUS.TOKEN=localStorage.getItem(TOKEN_KEY);
+let fuOnline=false;
+let records=[];          // 本地缓存
+let mediaStore={};        // uid -> {imgs:[], videos:[], pdfs:[]}
+let pendingRecord=null;   // 待整理的记录
+let pendingFiles=[];      // 待上传的附件
+
+// ============ 工具函数 ============
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function uidOf(r){return r.t+'_'+r.ts;}
+function fuHeaders(){return {'Authorization':'Bearer '+FLOWUS.TOKEN,'Content-Type':'application/json'};}
+function fuRich(x){x=(x||'').trim();return x?[{type:'text',text:{content:x},plain_text:x}]:[];}
+function nowStr(){return new Date().toLocaleString('zh-CN',{hour12:false});}
+function todayStr(){const d=new Date();return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0');}
+function loadLocal(){
+  try{records=JSON.parse(localStorage.getItem(LS_CARDS)||'[]');}catch(e){records=[];}
+  try{mediaStore=JSON.parse(localStorage.getItem(LS_FILES)||'{}');}catch(e){mediaStore={};}
+}
+function saveLocal(){
+  localStorage.setItem(LS_CARDS,JSON.stringify(records));
+  localStorage.setItem(LS_FILES,JSON.stringify(mediaStore));
+}
+function updateSyncStat(){
+  const el=document.getElementById('syncStat');
+  el.textContent=fuOnline?'🔄 已同步息流':'📴 离线（本地）';
+  el.className='sync '+(fuOnline?'on':'off');
+}
+// token 提示
+function ensureToken(){
+  if(FLOWUS.TOKEN) return true;
+  const t=prompt('请输入息流 token（打开息流网页 → 右上角头像 → 设置 → 开发者/API，复制 token 粘贴）：');
+  if(t&&t.trim()){FLOWUS.TOKEN=t.trim();localStorage.setItem(TOKEN_KEY,FLOWUS.TOKEN);return true;}
+  return false;
+}
+
+// ============ FlowUs 同步层（复用抽背卡） ============
+async function fuQueryAll(){
+  let rows=[],body={};
+  for(let i=0;i<25;i++){
+    const r=await fetch(FLOWUS.API+'/v2/databases/'+FLOWUS.DB+'/query',{method:'POST',headers:fuHeaders(),body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('query '+r.status);
+    const j=await r.json();
+    rows=rows.concat((j.results)||(j.data&&j.data.results)||[]);
+    if(j.has_more||(j.data&&j.data.has_more)){body={start_cursor:(j.next_cursor)||(j.data&&j.data.next_cursor)};} else break;
+  }
+  return rows;
+}
+function fuField(row,name){
+  const f=(row.properties||{})[name]; if(!f) return '';
+  if(f.title) return (f.title[0]&&f.title[0].plain_text)||'';
+  if(f.rich_text) return (f.rich_text[0]&&f.rich_text[0].plain_text)||'';
+  if(f.select) return f.select.name||'';
+  if(f.number!=null) return f.number;
+  return '';
+}
+function fuFilesOf(row,name){
+  const f=(row.properties||{})[name]; if(!f||!f.files) return [];
+  return f.files.map(o=>{
+    if(o.file&&o.file.url) return o.file.url;
+    if(o.external&&o.external.url) return o.external.url;
+    return '';
+  }).filter(Boolean);
+}
+async function pullFlowus(){
+  try{
+    const rows=await fuQueryAll();
+    const seen=new Set();
+    const merged=[];
+    rows.forEach(row=>{
+      const t=fuField(row,'名称');
+      const ts=fuField(row,'创建时间')||'';
+      const u=uidOf({t:t,ts:ts});
+      if(seen.has(u)) return; seen.add(u);
+      merged.push({
+        t:t,
+        type:fuField(row,'类型'),
+        cat:fuField(row,'分类'),
+        sub:fuField(row,'子分类'),
+        body:fuField(row,'要点'),
+        src:fuField(row,'出处'),
+        imp:fuField(row,'重要性'),
+        status:fuField(row,'提炼状态'),
+        ts:ts,
+        imgs:fuFilesOf(row,'图片/PDF'),
+        videos:fuFilesOf(row,'视频/语音')
+      });
+    });
+    // 合并本地未推送的
+    const localUids=new Set(records.map(r=>uidOf(r)));
+    merged.push(...records.filter(r=>!localUids.has(uidOf(r))));
+    records=merged;
+    saveLocal();
+    fuOnline=true;
+  }catch(e){fuOnline=false;}
+  updateSyncStat(); render();
+}
+async function fuCreate(props){
+  try{
+    const r=await fetch(FLOWUS.API+'/v2/pages',{method:'POST',headers:fuHeaders(),
+      body:JSON.stringify({parent:{database_id:FLOWUS.DB},properties:props})});
+    if(r.ok){const j=await r.json();return (j.data&&j.data.id)||j.id;}
+  }catch(e){}
+  return null;
+}
+function fuProps(rec){
+  const p={'名称':{type:'title',title:[{type:'text',text:{content:rec.t||'无标题'},plain_text:rec.t||'无标题'}]},
+    '要点':{type:'rich_text',rich_text:fuRich(rec.body||'')}};
+  if(rec.type) p['类型']={type:'select',select:{name:rec.type}};
+  if(rec.cat) p['分类']={type:'select',select:{name:rec.cat}};
+  if(rec.sub) p['子分类']={type:'select',select:{name:rec.sub}};
+  if(rec.src) p['出处']={type:'select',select:{name:rec.src}};
+  if(rec.imp) p['重要性']={type:'select',select:{name:rec.imp}};
+  if(rec.status) p['提炼状态']={type:'select',select:{name:rec.status}};
+  const d=rec.ts?rec.ts.split(' ')[0].replace(/\//g,'/') : todayStr();
+  if(d) p['创建时间']={type:'date',date:{start:d,end:null,time_zone:null}};
+  return p;
+}
+
+// ============ 记录 ============
+function saveRecord(body, media){
+  const ts=nowStr();
+  const rec={t:body.slice(0,30)||'记录',body:body,ts:ts};
+  records.unshift(rec);
+  if(media&&media.length){mediaStore[uidOf(rec)]=media;}
+  saveLocal();
+  pushRecord(rec);
+  document.getElementById('noteInput').value='';
+  clearAttach();
+  // 弹整理框
+  pendingRecord=rec;
+  openModal();
+  render();
+}
+function pushRecord(rec){
+  if(!fuOnline){return;}
+  const props=fuProps(rec);
+  fuCreate(props).then(fid=>{
+    if(fid&&mediaStore[uidOf(rec)]){
+      // 附件后续通过编辑补传（第一版简化：附件存本地+息流文件字段手动）
+    }
+  });
+}
+// 附件
+let selectedFile=null;
+function clearAttach(){selectedFile=null;document.getElementById('attachInfo').textContent='';}
+function handleFileSelect(e){
+  const f=e.target.files[0];e.target.value='';
+  if(!f) return;
+  selectedFile={name:f.name,size:f.size,type:f.type,file:f};
+  const kb=Math.round(f.size/1024);
+  document.getElementById('attachInfo').textContent='📎 '+f.name+'（'+kb+'KB）';
+}
+
+// ============ 语音（浏览器原生，免费） ============
+let recog=null,recording=false;
+function initRecognition(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){alert('此浏览器不支持语音识别，建议用 Chrome/Edge');return null;}
+  const r=new SR();r.lang='zh-CN';r.interimResults=true;r.continuous=true;
+  r.onresult=e=>{
+    let txt='';
+    for(let i=0;i<e.results.length;i++) txt+=e.results[i][0].transcript;
+    document.getElementById('noteInput').value=txt;
+  };
+  r.onerror=e=>{stopVoice();if(e.error==='not-allowed')alert('需要麦克风权限');};
+  return r;
+}
+function toggleVoice(){
+  if(recording){stopVoice();return;}
+  if(!recog) recog=initRecognition();
+  if(!recog) return;
+  recog.start();recording=true;
+  document.getElementById('voiceBtn').classList.add('recording');
+  document.getElementById('recordingBar').style.display='block';
+}
+function stopVoice(){
+  if(recog)recog.stop();
+  recording=false;
+  document.getElementById('voiceBtn').classList.remove('recording');
+  document.getElementById('recordingBar').style.display='none';
+}
+
+// ============ 整理弹窗 ============
+function openModal(){
+  document.getElementById('mType').value='想法';
+  document.getElementById('mCat').value='';
+  document.getElementById('mSub').value='';
+  document.getElementById('mSrc').value='';
+  document.getElementById('mImp').value='';
+  document.getElementById('organizeModal').classList.add('show');
+}
+function closeModal(){document.getElementById('organizeModal').classList.remove('show');pendingRecord=null;}
+function applyOrganize(){
+  if(!pendingRecord) return;
+  const rec=pendingRecord;
+  rec.type=document.getElementById('mType').value;
+  rec.cat=document.getElementById('mCat').value;
+  rec.sub=document.getElementById('mSub').value.trim();
+  rec.src=document.getElementById('mSrc').value;
+  rec.imp=document.getElementById('mImp').value;
+  saveLocal();
+  // 更新息流（有 fid 则 PATCH，简化：重建一条）
+  if(fuOnline){
+    fuCreate(fuProps(rec)).then(fid=>{
+      if(fid) pushMedia(rec);
+    });
+  }
+}
+function pushMedia(rec){
+  const media=mediaStore[uidOf(rec)];
+  if(!media||!media.length) return;
+  // 第一版：附件文件留待网页版二期直传；当前仅提示
+  console.log('media pending:',media.length);
+}
+
+// ============ 渲染时间线 ============
+let searchTerm='';
+function render(){
+  const box=document.getElementById('timeline');
+  let arr=records.slice();
+  if(searchTerm){
+    const q=searchTerm.toLowerCase();
+    arr=arr.filter(r=>[r.t,r.body,r.cat,r.sub,r.type,r.src].join(' ').toLowerCase().includes(q));
+  }
+  if(!arr.length){box.innerHTML='<div class="empty">还没有记录。上面写点什么，或按住 🎤 说话～</div>';return;}
+  box.innerHTML=arr.map(r=>{
+    const u=uidOf(r);
+    const m=mediaStore[u]||[];
+    const tags=(r.type?`<span class="tag type">${esc(r.type)}</span>`:'')+
+      (r.cat?`<span class="tag cat">${esc(r.cat)}${r.sub?'·'+esc(r.sub):''}</span>`:'')+
+      (r.imp?`<span class="tag">${esc(r.imp)}</span>`:'');
+    const imgs=m.filter(x=>x.kind==='img').map(x=>`<img src="${esc(x.url)}">`).join('');
+    const vids=m.filter(x=>x.kind==='video').map(x=>`<video src="${esc(x.url)}" controls></video>`).join('');
+    const pdfs=m.filter(x=>x.kind==='pdf').map(x=>`<a href="${esc(x.url)}" target="_blank" class="mini-btn">📄 PDF</a>`).join('');
+    return `<div class="tl-card">
+      <div class="tl-top">${tags}<span class="tl-time">${esc(r.ts)}</span></div>
+      <div class="tl-body">${esc(r.body||'（无文字内容）')}</div>
+      <div class="tl-media">${imgs}${vids}${pdfs}</div>
+      <div class="tl-actions">
+        <button class="mini-btn" onclick="editRecord('${u}')">✏️ 编辑/整理</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+function editRecord(u){
+  const rec=records.find(r=>uidOf(r)===u);
+  if(!rec) return;
+  pendingRecord=rec;
+  document.getElementById('mType').value=rec.type||'想法';
+  document.getElementById('mCat').value=rec.cat||'';
+  document.getElementById('mSub').value=rec.sub||'';
+  document.getElementById('mSrc').value=rec.src||'';
+  document.getElementById('mImp').value=rec.imp||'';
+  document.getElementById('organizeModal').classList.add('show');
+}
+
+// ============ 事件绑定 ============
+document.getElementById('saveBtn').onclick=()=>{
+  const body=document.getElementById('noteInput').value.trim();
+  if(!body&&!selectedFile){alert('先写点什么，或选个文件');return;}
+  const media=[];
+  if(selectedFile){
+    const kind=selectedFile.type.startsWith('image')?'img':
+      selectedFile.type.startsWith('video')?'video':'pdf';
+    media.push({kind:kind,url:'',name:selectedFile.name});
+  }
+  saveRecord(body,media);
+};
+document.getElementById('voiceBtn').onclick=toggleVoice;
+document.getElementById('imgBtn').onclick=()=>{document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click();};
+document.getElementById('videoBtn').onclick=()=>{document.getElementById('fileInput').accept='video/*';document.getElementById('fileInput').click();};
+document.getElementById('pdfBtn').onclick=()=>{document.getElementById('fileInput').accept='application/pdf';document.getElementById('fileInput').click();};
+document.getElementById('fileInput').onchange=handleFileSelect;
+document.getElementById('laterBtn').onclick=()=>{closeModal();};
+document.getElementById('organizeSaveBtn').onclick=()=>{applyOrganize();closeModal();};
+document.getElementById('newBtn').onclick=()=>{window.scrollTo({top:0,behavior:'smooth'});document.getElementById('noteInput').focus();};
+document.getElementById('search').oninput=e=>{searchTerm=e.target.value.trim().toLowerCase();render();};
+const recall=()=>{
+  if(!records.length){alert('还没有记录');return;}
+  const pick=records[Math.floor(Math.random()*records.length)];
+  pendingRecord=pick;
+  document.getElementById('mType').value=pick.type||'想法';
+  document.getElementById('mCat').value=pick.cat||'';
+  document.getElementById('mSub').value=pick.sub||'';
+  document.getElementById('mSrc').value=pick.src||'';
+  document.getElementById('mImp').value=pick.imp||'';
+  document.getElementById('organizeModal').classList.add('show');
+  const box=document.getElementById('timeline');
+  box.innerHTML=box.innerHTML.replace('class="tl-card"','class="tl-card" style="border-color:var(--acc)"');
+};
+document.getElementById('recallBtn').onclick=recall;
+document.getElementById('recallBtn2').onclick=recall;
+
+// ============ 启动 ============
+loadLocal();
+render();
+if(!FLOWUS.TOKEN){
+  // 不强制填 token，先本地用；有 token 才同步
+  updateSyncStat();
+} else {
+  pullFlowus();
+  setInterval(pullFlowus,30000);
+}
+</script>
+</body>
+</html>
