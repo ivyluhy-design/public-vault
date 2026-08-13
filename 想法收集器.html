@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>💡 想法收集器 v13</title>
+<title>💡 想法收集器 v14</title>
 <style>
   :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2430;--mut:#7b8290;--line:#e4e7ec;
         --acc:#3a7afe;--ok:#1faa6b;--no:#e0533d;--chip:#eef2fb;--warn:#b06a00;}
@@ -90,15 +90,12 @@
 <body>
 <div class="wrap">
   <h1>💡 想法收集器 <span id="syncStat" class="sync off">📴 离线（本地）</span></h1>
-  <div class="sub">v13 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
+  <div class="sub">v14 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
 
   <div class="panel">
     <textarea id="noteInput" placeholder="在想什么？直接打字，或按住下面语音按钮说话…"></textarea>
     <div class="recbar">
       <button class="rbtn" id="voiceBtn">🎤 语音</button>
-      <button class="rbtn" id="imgBtn">🖼️ 图片</button>
-      <button class="rbtn" id="videoBtn">🎬 视频</button>
-      <button class="rbtn" id="pdfBtn">📄 PDF</button>
       <button class="rbtn" id="attachBtn" style="background:#eef7ee;color:#1a8a4a">📎 多选</button>
       <button class="rbtn" id="ocrBtn" style="background:#f3e9fb;color:#7a3ab0">✨ OCR</button>
       <button class="rbtn primary" id="saveBtn" style="margin-left:auto">💾 立即记录</button>
@@ -755,17 +752,8 @@ document.getElementById('saveBtn').onclick=()=>{
   saveRecord(body,media);
 };
 document.getElementById('voiceBtn').onclick=toggleVoice;
-document.getElementById('imgBtn').onclick=()=>{
-  document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click();
-};
-document.getElementById('videoBtn').onclick=()=>{
-  document.getElementById('fileInput').accept='video/*';document.getElementById('fileInput').click();
-};
-document.getElementById('pdfBtn').onclick=()=>{
-  document.getElementById('fileInput').accept='application/pdf';document.getElementById('fileInput').click();
-};
 document.getElementById('attachBtn').onclick=()=>{
-  document.getElementById('fileInput').accept='image/*,video/*,audio/*,application/pdf';
+  document.getElementById('fileInput').accept='image/*,video/*,audio/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
   document.getElementById('fileInput').click();
 };
 document.getElementById('ocrBtn').onclick=doOcr;
