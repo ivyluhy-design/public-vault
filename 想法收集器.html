@@ -410,8 +410,25 @@ function initRecognition(){
     document.getElementById('noteInput').value=txt;
   };
   r.onerror=e=>{forceStopVoice();if(e.error==='not-allowed')alert('需要麦克风权限');};
-  r.onend=()=>{ if(recording) forceStopVoice(); };
+  r.onend=()=>{ if(recording){ forceStopVoice(); showToast('✅ 语音已转文字'); } };
   return r;
+}
+// 轻提示（自动消失）
+function showToast(msg, isErr){
+  let t=document.getElementById('xcToast');
+  if(!t){
+    t=document.createElement('div');
+    t.id='xcToast';
+    t.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:999;'+
+      'padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;color:#fff;'+
+      'box-shadow:0 4px 16px rgba(0,0,0,.2);transition:opacity .3s;max-width:85vw;text-align:center';
+    document.body.appendChild(t);
+  }
+  t.style.background=isErr?'#e0533d':'#1faa6b';
+  t.textContent=msg;
+  t.style.opacity='1';
+  clearTimeout(t._timer);
+  t._timer=setTimeout(()=>{ t.style.opacity='0'; }, 2600);
 }
 // iOS 录音（MediaRecorder）
 async function startRecord(){
@@ -432,15 +449,22 @@ async function startRecord(){
       document.getElementById('attachInfo').textContent='📎 '+names.join(' · ');
       // 释放麦克风
       stream.getTracks().forEach(t=>t.stop());
+      // 完成反馈
+      const secs=Math.round(blob.size/16000);
+      showToast(blob.size>0 ? ('✅ 录音完成（'+(secs||1)+'秒），已加入附件。点「立即记录」上传') : '⚠️ 录音太短，请重试', blob.size<=0);
+    };
+    mediaRec.onerror=e=>{
+      showToast('录音出错：'+(e.error&&e.error.message||'未知'), true);
+      forceStopVoice();
     };
     mediaRec.start();
     recording=true;
     document.getElementById('voiceBtn').textContent='⏹ 停止录音';
     document.getElementById('voiceBtn').classList.add('recording');
-    document.getElementById('recordingBar').textContent='🎙 正在录音… 再点一次停止';
+    document.getElementById('recordingBar').textContent='🎙 正在录音… 再点一次「⏹ 停止录音」结束';
     document.getElementById('recordingBar').style.display='block';
   }catch(e){
-    alert('无法录音：'+e.message);
+    showToast('无法录音：'+e.message, true);
     forceStopVoice();
   }
 }
