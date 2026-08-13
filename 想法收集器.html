@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>💡 想法收集器 v14</title>
+<title>💡 想法收集器 v15</title>
 <style>
   :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2430;--mut:#7b8290;--line:#e4e7ec;
         --acc:#3a7afe;--ok:#1faa6b;--no:#e0533d;--chip:#eef2fb;--warn:#b06a00;}
@@ -90,7 +90,7 @@
 <body>
 <div class="wrap">
   <h1>💡 想法收集器 <span id="syncStat" class="sync off">📴 离线（本地）</span></h1>
-  <div class="sub">v14 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
+  <div class="sub">v15 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
 
   <div class="panel">
     <textarea id="noteInput" placeholder="在想什么？直接打字，或按住下面语音按钮说话…"></textarea>
@@ -396,8 +396,14 @@ async function pushRecord(rec){
       if(!m.file) continue;
       const r=await uploadFileToFlowUs(m.file, rec);
       if(r&&r.oss&&r.url){
-        const ok=await appendFileBlock(fid, m.name, r.oss, m.file.size||0);
-        if(ok){ showToast('✅ 附件已上传: '+m.name); uploaded.push({name:m.name, url:r.url, kind:m.kind}); }
+        // 图片带 OCR 文字 → image块 + paragraph块（图文并列）
+        if(m.kind==='img'&&m.ocrText){
+          const ok=await appendImgTextBlock(fid, r.oss, m.ocrText, m.file.size||0);
+          if(ok){ showToast('✅ 图片+OCR已上传'); uploaded.push({name:m.name, url:r.url, kind:m.kind}); }
+        } else {
+          const ok=await appendFileBlock(fid, m.name, r.oss, m.file.size||0);
+          if(ok){ showToast('✅ 附件已上传: '+m.name); uploaded.push({name:m.name, url:r.url, kind:m.kind}); }
+        }
       } else {
         showToast('⚠️ 附件上传失败: '+m.name, true);
       }
@@ -444,6 +450,19 @@ async function syncAllLocal(){
   saveLocal();
   showToast('✅ 同步完成：新增 '+n+' 条，跳过已存在 '+skip+' 条');
   render();
+}
+// 追加图片块 + OCR文字块（图文并列，image 用 file{oss_name} 内部格式）
+async function appendImgTextBlock(fid, oss, ocrText, size){
+  try{
+    const body={children:[
+      {object:'block',type:'image',image:{type:'file',file:{oss_name:oss,size:size||0}}},
+      {object:'block',type:'paragraph',paragraph:{rich_text:[{type:'text',text:{content:ocrText}}]}}
+    ]};
+    const r=await fetch(FLOWUS.API+'/v2/blocks/'+fid+'/children',{method:'PATCH',headers:fuHeaders(),
+      body:JSON.stringify(body)});
+    if(!r.ok) showToast('图文块挂载失败:'+r.status,true);
+    return r.ok;
+  }catch(e){ showToast('图文块异常:'+e.message,true); return false; }
 }
 // 追加文件块到记录页面
 async function appendFileBlock(fid, name, oss, size){
@@ -500,19 +519,22 @@ async function ocrPdf(file){
   showToast('⚠️ PDF OCR 需逐页渲染，暂时只处理图片', true);
   return '';
 }
-// OCR 入口：识别当前附件列表中的图片/PDF，文字进要点
+// OCR 入口：识别当前附件中的图片，文字绑定到对应图片（图文一起保存）
 async function doOcr(){
   const imgs=selectedFiles.filter(f=>f.type.startsWith('image/'));
   if(!imgs.length){ showToast('请先添加图片附件', true); return; }
-  const note=document.getElementById('noteInput');
-  let all='';
+  let done=0;
   for(const img of imgs){
     const txt=await ocrImage(img.file);
-    if(txt) all+=(all?'\n':'')+txt;
+    if(txt){ img.ocrText=txt; done++; }
   }
-  if(all){
-    note.value=note.value?note.value+'\n'+all:all;
-    showToast('✅ 已识别 '+imgs.length+' 张图，文字已填入');
+  if(done){
+    showToast('✅ 已识别 '+done+' 张图（图片+文字将一起保存）');
+    // 附件栏显示识别状态
+    const names=selectedFiles.map(f=>f.name+(f.ocrText?' [📝已识别]':''));
+    document.getElementById('attachInfo').textContent='📎 '+names.join(' · ');
+  } else {
+    showToast('⚠️ 未识别出文字', true);
   }
 }
 
