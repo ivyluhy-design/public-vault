@@ -280,8 +280,11 @@ async function uploadFileToFlowUs(file, rec){
     const up=(j.data&&j.data.upload_url)||j.upload_url;
     const fileUrl=(j.data&&j.data.file_url)||j.file_url;
     if(!up||!fileUrl) return null;
-    // 2. PUT 上传
-    const upR=await fetch(up,{method:'PUT',body:file});
+    // 2. PUT 上传（必须带响应里的 headers，尤其 x-cos-callback）
+    const upHeaders=(j.data&&j.data.headers)||j.headers||{};
+    const putOpts={method:'PUT',body:file};
+    if(upHeaders&&Object.keys(upHeaders).length) putOpts.headers=upHeaders;
+    const upR=await fetch(up,putOpts);
     if(!upR.ok){ console.log('PUT失败',upR.status); return null; }
     return fileUrl;
   }catch(e){ console.log('上传异常',e.message); return null; }
