@@ -388,14 +388,30 @@ async function pushRecord(rec){
     const fid=await fuCreate(props);
     if(!fid){ pushedUids.delete(u); return; }
     rec._fid=fid;
+    const uploaded=[];   // 成功上传的附件
     for(const m of media){
       if(!m.file) continue;
       const r=await uploadFileToFlowUs(m.file, rec);
-      if(r&&r.oss){
+      if(r&&r.oss&&r.url){
         const ok=await appendFileBlock(fid, m.name, r.oss, m.file.size||0);
-        if(ok) showToast('✅ 附件已上传: '+m.name);
+        if(ok){ showToast('✅ 附件已上传: '+m.name); uploaded.push({name:m.name, url:r.url, kind:m.kind}); }
       } else {
         showToast('⚠️ 附件上传失败: '+m.name, true);
+      }
+    }
+    // 写入表格字段（external 格式，表格行可见）——验证过的正确格式
+    if(uploaded.length){
+      const imgPdf=uploaded.filter(m=>m.kind==='img'||m.kind==='pdf'||m.kind==='voice_file');
+      const vidAud=uploaded.filter(m=>m.kind==='video'||m.kind==='voice');
+      const fprops={};
+      if(imgPdf.length) fprops['图片/PDF']={type:'files',files:imgPdf.map(m=>({name:m.name,type:'external',external:{url:m.url}}))};
+      if(vidAud.length) fprops['视频/语音']={type:'files',files:vidAud.map(m=>({name:m.name,type:'external',external:{url:m.url}}))};
+      if(Object.keys(fprops).length){
+        try{
+          const pr=await fetch(FLOWUS.API+'/v2/pages/'+fid,{method:'PATCH',headers:fuHeaders(),
+            body:JSON.stringify({properties:fprops})});
+          if(pr.ok) showToast('✅ 附件已同步到表格');
+        }catch(e){}
       }
     }
     // 推送成功：标记已同步，防止重复
@@ -405,18 +421,25 @@ async function pushRecord(rec){
     if(!media.length) showToast('⚠️ 同步失败(离线?)', true);
   }
 }
-// 手动同步：把本地未同步的记录全部推送
+// 手动同步：拉取息流现有记录按名称去重，只推息流里没有的
 async function syncAllLocal(){
   if(!FLOWUS.TOKEN){ showToast('未配置 token', true); return; }
-  showToast('🔄 开始同步到息流…');
-  let n=0;
+  showToast('🔄 同步中，先核对息流已有记录…');
+  let existingNames=new Set();
+  try{
+    const rows=await fuQueryAll();
+    rows.forEach(row=>{ const t=fuField(row,'名称'); if(t) existingNames.add(t); });
+  }catch(e){ showToast('⚠️ 无法读取息流，可能离线', true); return; }
+  let n=0,skip=0;
   for(const rec of records){
     if(rec._synced) continue;
+    if(existingNames.has(rec.t)){ rec._synced=true; skip++; continue; }  // 息流已有同名→跳过
     pushedUids.delete(uidOf(rec));  // 允许重推
     await pushRecord(rec);
     n++;
   }
-  showToast('✅ 同步完成，共 '+n+' 条');
+  saveLocal();
+  showToast('✅ 同步完成：新增 '+n+' 条，跳过已存在 '+skip+' 条');
   render();
 }
 // 追加文件块到记录页面
