@@ -257,7 +257,9 @@ async function pullFlowus(){
         status:fuField(row,'提炼状态'),
         ts:ts,
         imgs:fuFilesOf(row,'图片/PDF'),
-        videos:fuFilesOf(row,'视频/语音')
+        videos:fuFilesOf(row,'视频/语音'),
+        _fid:row.id,          // 保存息流页面 ID，整理时 PATCH 更新
+        _synced:true          // 息流已有的视为已同步
       });
     });
     // 用 uid 去重合并（本地优先）
@@ -587,7 +589,7 @@ function openModal(){
   document.getElementById('organizeModal').classList.add('show');
 }
 function closeModal(){document.getElementById('organizeModal').classList.remove('show');pendingRecord=null;}
-function applyOrganize(){
+async function applyOrganize(){
   if(!pendingRecord) return;
   const rec=pendingRecord;
   rec.type=document.getElementById('mType').value;
@@ -596,12 +598,27 @@ function applyOrganize(){
   rec.src=document.getElementById('mSrc').value;
   rec.imp=document.getElementById('mImp').value;
   saveLocal();
-  // 更新息流（有 fid 则 PATCH，简化：重建一条）
-  if(fuOnline){
-    fuCreate(fuProps(rec)).then(fid=>{
-      if(fid) pushMedia(rec);
-    });
-  }
+  // 更新息流：有 _fid 就 PATCH 更新（不新建，避免分裂成两条），否则新建
+  if(!FLOWUS.TOKEN) return;
+  try{
+    if(rec._fid){
+      // PATCH 更新字段（类型/分类/子分类/出处/重要性）
+      const fprops={};
+      if(rec.type) fprops['类型']={type:'select',select:{name:rec.type}};
+      if(rec.cat) fprops['分类']={type:'select',select:{name:rec.cat}};
+      if(rec.sub) fprops['子分类']={type:'select',select:{name:rec.sub}};
+      if(rec.src) fprops['出处']={type:'select',select:{name:rec.src}};
+      if(rec.imp) fprops['重要性']={type:'select',select:{name:rec.imp}};
+      const pr=await fetch(FLOWUS.API+'/v2/pages/'+rec._fid,{method:'PATCH',headers:fuHeaders(),
+        body:JSON.stringify({properties:fprops})});
+      if(pr.ok) showToast('✅ 整理已保存');
+    } else {
+      // 还没同步过 → 推送（建行+附件）
+      const fid=await fuCreate(fuProps(rec));
+      if(fid){ rec._fid=fid; if(rec.media&&rec.media.length) uploadRecMedia(rec); }
+    }
+  }catch(e){ showToast('⚠️ 保存失败:'+e.message, true); }
+  render();
 }
 function pushMedia(rec){
   const media=mediaStore[uidOf(rec)];
