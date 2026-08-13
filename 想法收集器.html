@@ -276,7 +276,7 @@ async function uploadFileToFlowUs(file, rec){
     const r=await fetch(FLOWUS.API+'/v2/files/upload-url',{method:'POST',headers:fuHeaders(),
       body:JSON.stringify({filename:file.name,content_type:mime,content_length:file.size,
         parent:{type:'page_id',page_id:rec._fid||''}})});
-    if(!r.ok){ console.log('upload-url失败',r.status); return null; }
+    if(!r.ok){ console.log('upload-url失败',r.status); showToast('上传失败1:'+r.status,true); return null; }
     const j=await r.json();
     const up=(j.data&&j.data.upload_url)||j.upload_url;
     const fileUrl=(j.data&&j.data.file_url)||j.file_url;
@@ -289,7 +289,7 @@ async function uploadFileToFlowUs(file, rec){
     const putOpts={method:'PUT',body:putBody};
     if(upHeaders&&Object.keys(upHeaders).length) putOpts.headers=upHeaders;
     const upR=await fetch(up,putOpts);
-    if(!upR.ok){ console.log('PUT失败',upR.status); return null; }
+    if(!upR.ok){ console.log('PUT失败',upR.status); showToast('上传失败2:'+upR.status,true); return null; }
     return {url:fileUrl, oss:ossName};
   }catch(e){ console.log('上传异常',e.message); return null; }
 }
@@ -394,7 +394,10 @@ async function pushRecord(rec){
       if(!m.file) continue;
       const r=await uploadFileToFlowUs(m.file, rec);
       if(r&&r.oss){
-        await appendFileBlock(fid, m.name, r.oss, m.file.size||0);
+        const ok=await appendFileBlock(fid, m.name, r.oss, m.file.size||0);
+        if(ok) showToast('✅ 附件已上传: '+m.name);
+      } else {
+        showToast('⚠️ 附件上传失败: '+m.name, true);
       }
     }
   }catch(e){ pushedUids.delete(u); }
@@ -405,8 +408,9 @@ async function appendFileBlock(fid, name, oss, size){
     const body={children:[{object:'block',type:'file',file:{type:'file',file:{oss_name:oss,size:size}}}]};
     const r=await fetch(FLOWUS.API+'/v2/blocks/'+fid+'/children',{method:'PATCH',headers:fuHeaders(),
       body:JSON.stringify(body)});
+    if(!r.ok) showToast('附件挂载失败:'+r.status,true);
     return r.ok;
-  }catch(e){ return false; }
+  }catch(e){ showToast('附件挂载异常:'+e.message,true); return false; }
 }
 // 附件
 let selectedFiles=[];
