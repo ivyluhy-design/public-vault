@@ -317,10 +317,12 @@ async function uploadRecMedia(rec){
   }
 }
 
-async function fuCreate(props){
+async function fuCreate(props, children){
   try{
+    const body={parent:{database_id:FLOWUS.DB},properties:props};
+    if(children&&children.length) body.children=children;
     const r=await fetch(FLOWUS.API+'/v2/pages',{method:'POST',headers:fuHeaders(),
-      body:JSON.stringify({parent:{database_id:FLOWUS.DB},properties:props})});
+      body:JSON.stringify(body)});
     if(r.ok){const j=await r.json();return (j.data&&j.data.id)||j.id;}
   }catch(e){}
   return null;
@@ -370,20 +372,37 @@ function saveRecord(body, media){
   render();
 }
 const pushedUids=new Set();
-function pushRecord(rec){
+async function pushRecord(rec){
   if(!fuOnline){return;}
   const u=uidOf(rec);
   if(pushedUids.has(u)) return;   // 防重复推送
   pushedUids.add(u);
   const props=fuProps(rec);
-  fuCreate(props).then(fid=>{
-    if(fid){
-      rec._fid=fid;               // 记录 fid，用于补传附件
-      if(rec.media&&rec.media.length) uploadRecMedia(rec);
-    } else {
-      pushedUids.delete(u);        // 失败可重试
+  const media=rec.media||[];
+  try{
+    // 先上传所有文件拿 oss_name（上传需要先有页面 → 先建空行）
+    // 简化：先建行（无文件），再补文件块
+    const fid=await fuCreate(props);
+    if(!fid){ pushedUids.delete(u); return; }
+    rec._fid=fid;
+    // 逐个上传并追加文件块
+    for(const m of media){
+      if(!m.file) continue;
+      const r=await uploadFileToFlowUs(m.file, rec);
+      if(r&&r.oss){
+        await appendFileBlock(fid, m.name, r.oss, m.file.size||0);
+      }
     }
-  });
+  }catch(e){ pushedUids.delete(u); }
+}
+// 追加文件块到记录页面
+async function appendFileBlock(fid, name, oss, size){
+  try{
+    const body={children:[{object:'block',type:'file',file:{type:'file',file:{oss_name:oss,size:size}}}]};
+    const r=await fetch(FLOWUS.API+'/v2/blocks/'+fid+'/children',{method:'PATCH',headers:fuHeaders(),
+      body:JSON.stringify(body)});
+    return r.ok;
+  }catch(e){ return false; }
 }
 // 附件
 let selectedFiles=[];
