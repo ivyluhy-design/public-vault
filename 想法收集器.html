@@ -96,8 +96,11 @@
     <textarea id="noteInput" placeholder="在想什么？直接打字，或按住下面语音按钮说话…"></textarea>
     <div class="recbar">
       <button class="rbtn" id="voiceBtn">🎤 语音</button>
-      <button class="rbtn" id="attachBtn" style="background:#eef7ee;color:#1a8a4a">📎 添加附件</button>
-      <button class="rbtn" id="ocrBtn" style="background:#f3e9fb;color:#7a3ab0">✨ OCR转文字</button>
+      <button class="rbtn" id="imgBtn">🖼️ 图片</button>
+      <button class="rbtn" id="videoBtn">🎬 视频</button>
+      <button class="rbtn" id="pdfBtn">📄 PDF</button>
+      <button class="rbtn" id="attachBtn" style="background:#eef7ee;color:#1a8a4a">📎 多选</button>
+      <button class="rbtn" id="ocrBtn" style="background:#f3e9fb;color:#7a3ab0">✨ OCR</button>
       <button class="rbtn primary" id="saveBtn" style="margin-left:auto">💾 立即记录</button>
     </div>
     <div class="attachinfo" id="attachInfo"></div>
@@ -752,6 +755,15 @@ document.getElementById('saveBtn').onclick=()=>{
   saveRecord(body,media);
 };
 document.getElementById('voiceBtn').onclick=toggleVoice;
+document.getElementById('imgBtn').onclick=()=>{
+  document.getElementById('fileInput').accept='image/*';document.getElementById('fileInput').click();
+};
+document.getElementById('videoBtn').onclick=()=>{
+  document.getElementById('fileInput').accept='video/*';document.getElementById('fileInput').click();
+};
+document.getElementById('pdfBtn').onclick=()=>{
+  document.getElementById('fileInput').accept='application/pdf';document.getElementById('fileInput').click();
+};
 document.getElementById('attachBtn').onclick=()=>{
   document.getElementById('fileInput').accept='image/*,video/*,audio/*,application/pdf';
   document.getElementById('fileInput').click();
