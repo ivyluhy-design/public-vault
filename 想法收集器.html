@@ -107,6 +107,7 @@
   <div class="toolbar">
     <input type="text" id="search" placeholder="🔍 搜索记录…">
     <button id="recallBtn">🎲 随机回忆</button>
+    <button id="syncBtn" style="background:#e7f7ec;color:#1a8a4a">🔄 同步到息流</button>
   </div>
 
   <div id="timeline"></div>
@@ -377,19 +378,16 @@ function saveRecord(body, media){
 }
 const pushedUids=new Set();
 async function pushRecord(rec){
-  if(!fuOnline){return;}
   const u=uidOf(rec);
-  if(pushedUids.has(u)) return;   // 防重复推送
+  if(pushedUids.has(u)) return;   // 防重复推送（已在推送中）
+  if(!FLOWUS.TOKEN){ return; }    // 无 token 只存本地
   pushedUids.add(u);
   const props=fuProps(rec);
   const media=rec.media||[];
   try{
-    // 先上传所有文件拿 oss_name（上传需要先有页面 → 先建空行）
-    // 简化：先建行（无文件），再补文件块
     const fid=await fuCreate(props);
     if(!fid){ pushedUids.delete(u); return; }
     rec._fid=fid;
-    // 逐个上传并追加文件块
     for(const m of media){
       if(!m.file) continue;
       const r=await uploadFileToFlowUs(m.file, rec);
@@ -400,7 +398,26 @@ async function pushRecord(rec){
         showToast('⚠️ 附件上传失败: '+m.name, true);
       }
     }
-  }catch(e){ pushedUids.delete(u); }
+    // 推送成功：标记已同步，防止重复
+    if(!rec._synced){ rec._synced=true; saveLocal(); }
+  }catch(e){
+    pushedUids.delete(u);   // 失败可重试
+    if(!media.length) showToast('⚠️ 同步失败(离线?)', true);
+  }
+}
+// 手动同步：把本地未同步的记录全部推送
+async function syncAllLocal(){
+  if(!FLOWUS.TOKEN){ showToast('未配置 token', true); return; }
+  showToast('🔄 开始同步到息流…');
+  let n=0;
+  for(const rec of records){
+    if(rec._synced) continue;
+    pushedUids.delete(uidOf(rec));  // 允许重推
+    await pushRecord(rec);
+    n++;
+  }
+  showToast('✅ 同步完成，共 '+n+' 条');
+  render();
 }
 // 追加文件块到记录页面
 async function appendFileBlock(fid, name, oss, size){
@@ -644,6 +661,7 @@ const recall=()=>{
   box.innerHTML=box.innerHTML.replace('class="tl-card"','class="tl-card" style="border-color:var(--acc)"');
 };
 document.getElementById('recallBtn').onclick=recall;
+document.getElementById('syncBtn').onclick=syncAllLocal;
 document.getElementById('recallBtn2').onclick=recall;
 
 // ============ 启动 ============
