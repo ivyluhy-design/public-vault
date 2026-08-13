@@ -100,7 +100,7 @@
       <button class="rbtn primary" id="saveBtn" style="margin-left:auto">💾 立即记录</button>
     </div>
     <div class="attachinfo" id="attachInfo"></div>
-    <input type="file" id="fileInput" accept="image/*,video/*,application/pdf" style="display:none">
+    <input type="file" id="fileInput" accept="image/*,video/*,application/pdf" style="display:none" multiple>
   </div>
 
   <div class="toolbar">
@@ -179,7 +179,11 @@ function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;'
 function uidOf(r){return r.t+'_'+r.ts;}
 function fuHeaders(){return {'Authorization':'Bearer '+FLOWUS.TOKEN,'Content-Type':'application/json'};}
 function fuRich(x){x=(x||'').trim();return x?[{type:'text',text:{content:x},plain_text:x}]:[];}
-function nowStr(){return new Date().toLocaleString('zh-CN',{hour12:false});}
+function nowStr(){
+  const d=new Date();
+  const pad=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'/'+pad(d.getMonth()+1)+'/'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+}
 function todayStr(){const d=new Date();return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0');}
 function loadLocal(){
   try{records=JSON.parse(localStorage.getItem(LS_CARDS)||'[]');}catch(e){records=[];}
@@ -254,15 +258,62 @@ async function pullFlowus(){
         videos:fuFilesOf(row,'视频/语音')
       });
     });
-    // 合并本地未推送的
-    const localUids=new Set(records.map(r=>uidOf(r)));
-    merged.push(...records.filter(r=>!localUids.has(uidOf(r))));
-    records=merged;
+    // 用 uid 去重合并（本地优先）
+    const uidSet=new Set(merged.map(r=>uidOf(r)));
+    records.forEach(r=>{ if(!uidSet.has(uidOf(r))){ merged.push(r); uidSet.add(uidOf(r)); } });
+    records=merged.filter((r,i,a)=>a.findIndex(x=>uidOf(x)===uidOf(r))===i);  // 彻底去重
     saveLocal();
     fuOnline=true;
   }catch(e){fuOnline=false;}
   updateSyncStat(); render();
 }
+// ===== 文件上传（upload-url → PUT → file_url） =====
+async function uploadFileToFlowUs(file, rec){
+  try{
+    // 1. 拿预签名 URL
+    const mime=file.type||'application/octet-stream';
+    const r=await fetch(FLOWUS.API+'/v2/files/upload-url',{method:'POST',headers:fuHeaders(),
+      body:JSON.stringify({filename:file.name,content_type:mime,content_length:file.size,
+        parent:{type:'page_id',page_id:rec._fid||''}})});
+    if(!r.ok){ console.log('upload-url失败',r.status); return null; }
+    const j=await r.json();
+    const up=(j.data&&j.data.upload_url)||j.upload_url;
+    const fileUrl=(j.data&&j.data.file_url)||j.file_url;
+    if(!up||!fileUrl) return null;
+    // 2. PUT 上传
+    const upR=await fetch(up,{method:'PUT',body:file});
+    if(!upR.ok){ console.log('PUT失败',upR.status); return null; }
+    return fileUrl;
+  }catch(e){ console.log('上传异常',e.message); return null; }
+}
+// 上传记录的附件并补写 files 字段
+async function uploadRecMedia(rec){
+  const media=rec.media||[];
+  if(!media.length) return;
+  // 逐文件上传
+  for(const m of media){
+    if(m.url) continue;              // 已有 url 跳过
+    if(!m.file) continue;
+    const url=await uploadFileToFlowUs(m.file, rec);
+    if(url){ m.url=url; console.log('已上传:', m.name); }
+  }
+  // 全部传完后，若有 fid 则 PATCH 附件字段
+  if(rec._fid){
+    const imgPdf=media.filter(m=>m.kind==='img'||m.kind==='pdf'||m.kind==='voice_file');
+    const vidAud=media.filter(m=>m.kind==='video'||m.kind==='voice');
+    const props={};
+    if(imgPdf.length) props['图片/PDF']={type:'files',files:imgPdf.filter(m=>m.url).map(m=>({name:m.name,type:'file',file:{url:m.url}}))};
+    if(vidAud.length) props['视频/语音']={type:'files',files:vidAud.filter(m=>m.url).map(m=>({name:m.name,type:'file',file:{url:m.url}}))};
+    if(Object.keys(props).length){
+      try{
+        const pr=await fetch(FLOWUS.API+'/v2/pages/'+rec._fid,{method:'PATCH',headers:fuHeaders(),
+          body:JSON.stringify({properties:props})});
+        console.log('PATCH附件', pr.status);
+      }catch(e){ console.log('PATCH附件失败',e.message); }
+    }
+  }
+}
+
 async function fuCreate(props){
   try{
     const r=await fetch(FLOWUS.API+'/v2/pages',{method:'POST',headers:fuHeaders(),
@@ -282,13 +333,28 @@ function fuProps(rec){
   if(rec.status) p['提炼状态']={type:'select',select:{name:rec.status}};
   const d=rec.ts?rec.ts.split(' ')[0].replace(/\//g,'/') : todayStr();
   if(d) p['创建时间']={type:'date',date:{start:d,end:null,time_zone:null}};
+  // 附件：图片/PDF → files 字段；视频/语音 → files 字段
+  const rec2=rec;
+  const imgPdf=(rec2.media||[]).filter(m=>m.kind==='img'||m.kind==='pdf'||m.kind==='voice_file');
+  const vidAud=(rec2.media||[]).filter(m=>m.kind==='video'||m.kind==='voice');
+  if(imgPdf.length){
+    p['图片/PDF']={type:'files',files:imgPdf.map(m=>({name:m.name,type:'file',file:{url:m.url}}))};
+  }
+  if(vidAud.length){
+    p['视频/语音']={type:'files',files:vidAud.map(m=>({name:m.name,type:'file',file:{url:m.url}}))};
+  }
   return p;
 }
 
 // ============ 记录 ============
 function saveRecord(body, media){
   const ts=nowStr();
-  const rec={t:body.slice(0,30)||'记录',body:body,ts:ts};
+  // 名称：取第一行，最多30字；无文字用附件名
+  let title='';
+  if(body){ const firstLine=body.split('\n')[0].trim(); title=firstLine.slice(0,30)||'记录'; }
+  else if(media&&media.length){ title=media[0].name.replace(/\.[^.]+$/,'').slice(0,30)||'记录'; }
+  else title='记录';
+  const rec={t:title,body:body,ts:ts,media:media||[]};
   records.unshift(rec);
   if(media&&media.length){mediaStore[uidOf(rec)]=media;}
   saveLocal();
@@ -300,31 +366,43 @@ function saveRecord(body, media){
   openModal();
   render();
 }
+const pushedUids=new Set();
 function pushRecord(rec){
   if(!fuOnline){return;}
+  const u=uidOf(rec);
+  if(pushedUids.has(u)) return;   // 防重复推送
+  pushedUids.add(u);
   const props=fuProps(rec);
   fuCreate(props).then(fid=>{
-    if(fid&&mediaStore[uidOf(rec)]){
-      // 附件后续通过编辑补传（第一版简化：附件存本地+息流文件字段手动）
+    if(fid){
+      rec._fid=fid;               // 记录 fid，用于补传附件
+      if(rec.media&&rec.media.length) uploadRecMedia(rec);
+    } else {
+      pushedUids.delete(u);        // 失败可重试
     }
   });
 }
 // 附件
-let selectedFile=null;
-function clearAttach(){selectedFile=null;document.getElementById('attachInfo').textContent='';}
+let selectedFiles=[];
+function clearAttach(){selectedFiles=[];document.getElementById('attachInfo').textContent='';}
 function handleFileSelect(e){
-  const f=e.target.files[0];e.target.value='';
-  if(!f) return;
-  selectedFile={name:f.name,size:f.size,type:f.type,file:f};
-  const kb=Math.round(f.size/1024);
-  document.getElementById('attachInfo').textContent='📎 '+f.name+'（'+kb+'KB）';
+  const files=[...e.target.files];e.target.value='';
+  if(!files.length) return;
+  files.forEach(f=>{ selectedFiles.push({name:f.name,size:f.size,type:f.type,file:f}); });
+  const names=selectedFiles.map(f=>f.name+'（'+Math.round(f.size/1024)+'KB）');
+  document.getElementById('attachInfo').textContent='📎 '+names.join(' · ');
 }
 
-// ============ 语音（浏览器原生，免费） ============
+// ============ 语音（优先原生识别；iOS Safari 降级为录音） ============
 let recog=null,recording=false;
+let mediaRec=null,mediaChunks=[];
+let voiceMode='speech';   // speech=语音转文字 / record=录音上传
+
+function voiceSupported(){
+  return !!(window.SpeechRecognition||window.webkitSpeechRecognition);
+}
 function initRecognition(){
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SR){alert('此浏览器不支持语音识别，建议用 Chrome/Edge');return null;}
   const r=new SR();r.lang='zh-CN';r.interimResults=true;r.continuous=true;
   r.onresult=e=>{
     let txt='';
@@ -332,20 +410,63 @@ function initRecognition(){
     document.getElementById('noteInput').value=txt;
   };
   r.onerror=e=>{forceStopVoice();if(e.error==='not-allowed')alert('需要麦克风权限');};
-  r.onend=()=>{ /* 识别自然结束时也重置状态 */ if(recording) forceStopVoice(); };
+  r.onend=()=>{ if(recording) forceStopVoice(); };
   return r;
 }
-function toggleVoice(){
-  if(recording){forceStopVoice();return;}
+// iOS 录音（MediaRecorder）
+async function startRecord(){
   try{
-    if(!recog) recog=initRecognition();
-    if(!recog) return;
-    recog.start();
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaChunks=[];
+    const mime=MediaRecorder.isTypeSupported('audio/mp4')?'audio/mp4':MediaRecorder.isTypeSupported('audio/webm')?'audio/webm':'audio/mp4';
+    mediaRec=new MediaRecorder(stream,{mimeType:mime});
+    mediaRec.ondataavailable=e=>{ if(e.data.size) mediaChunks.push(e.data); };
+    mediaRec.onstop=()=>{
+      const blob=new Blob(mediaChunks,{type:mediaRec.mimeType||'audio/mp4'});
+      const ext=mediaRec.mimeType.includes('mp4')?'m4a':mediaRec.mimeType.includes('webm')?'webm':'m4a';
+      const name='录音_'+new Date().toISOString().slice(5,16).replace(/[-:T]/g,'')+'.'+ext;
+      const file=new File([blob],name,{type:blob.type});
+      // 加入附件列表（kind=voice）
+      selectedFiles.push({name:name,size:blob.size,type:blob.type,file:file,kind:'voice'});
+      const names=selectedFiles.map(f=>f.name+'（'+Math.round(f.size/1024)+'KB）');
+      document.getElementById('attachInfo').textContent='📎 '+names.join(' · ');
+      // 释放麦克风
+      stream.getTracks().forEach(t=>t.stop());
+    };
+    mediaRec.start();
     recording=true;
+    document.getElementById('voiceBtn').textContent='⏹ 停止录音';
     document.getElementById('voiceBtn').classList.add('recording');
+    document.getElementById('recordingBar').textContent='🎙 正在录音… 再点一次停止';
     document.getElementById('recordingBar').style.display='block';
   }catch(e){
-    // start 抛异常（如未授权），强制重置状态，避免卡死
+    alert('无法录音：'+e.message);
+    forceStopVoice();
+  }
+}
+function stopRecord(){
+  try{ if(mediaRec&&mediaRec.state!=='inactive') mediaRec.stop(); }catch(e){}
+  forceStopVoice();
+}
+function toggleVoice(){
+  if(recording){ forceStopVoice(); return; }
+  if(!voiceSupported()){
+    // iOS Safari → 录音模式
+    voiceMode='record';
+    startRecord();
+    return;
+  }
+  // 支持原生识别
+  voiceMode='speech';
+  try{
+    if(!recog) recog=initRecognition();
+    recog.start();
+    recording=true;
+    document.getElementById('voiceBtn').textContent='⏹ 停止';
+    document.getElementById('voiceBtn').classList.add('recording');
+    document.getElementById('recordingBar').textContent='🎤 正在识别… 再点一次停止';
+    document.getElementById('recordingBar').style.display='block';
+  }catch(e){
     recog=null; recording=false;
     document.getElementById('voiceBtn').classList.remove('recording');
     document.getElementById('recordingBar').style.display='none';
@@ -354,8 +475,10 @@ function toggleVoice(){
 }
 function forceStopVoice(){
   try{ if(recog){ recog.abort(); recog.onend=null; } }catch(e){}
-  recog=null;   // 重建实例，彻底断开
+  try{ if(mediaRec&&mediaRec.state!=='inactive') mediaRec.stop(); }catch(e){}
+  recog=null; mediaRec=null;
   recording=false;
+  document.getElementById('voiceBtn').textContent='🎤 语音';
   document.getElementById('voiceBtn').classList.remove('recording');
   document.getElementById('recordingBar').style.display='none';
 }
@@ -437,13 +560,11 @@ function editRecord(u){
 // ============ 事件绑定 ============
 document.getElementById('saveBtn').onclick=()=>{
   const body=document.getElementById('noteInput').value.trim();
-  if(!body&&!selectedFile){alert('先写点什么，或选个文件');return;}
-  const media=[];
-  if(selectedFile){
-    const kind=selectedFile.type.startsWith('image')?'img':
-      selectedFile.type.startsWith('video')?'video':'pdf';
-    media.push({kind:kind,url:'',name:selectedFile.name});
-  }
+  if(!body&&!selectedFiles.length){alert('先写点什么，或选个文件');return;}
+  const media=selectedFiles.map(sf=>({
+    kind:sf.kind||(sf.type.startsWith('image')?'img':sf.type.startsWith('video')?'video':'pdf'),
+    url:'',name:sf.name,file:sf.file
+  }));
   saveRecord(body,media);
 };
 document.getElementById('voiceBtn').onclick=toggleVoice;
