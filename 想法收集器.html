@@ -280,14 +280,17 @@ async function uploadFileToFlowUs(file, rec){
     const j=await r.json();
     const up=(j.data&&j.data.upload_url)||j.upload_url;
     const fileUrl=(j.data&&j.data.file_url)||j.file_url;
+    const ossName=(j.data&&j.data.oss_name)||j.oss_name;
     if(!up||!fileUrl) return null;
-    // 2. PUT 上传（必须带响应里的 headers，尤其 x-cos-callback）
+    // 2. PUT 上传（File 转 ArrayBuffer 兼容 iOS；必须带 x-cos-callback 头）
     const upHeaders=(j.data&&j.data.headers)||j.headers||{};
-    const putOpts={method:'PUT',body:file};
+    let putBody=file;
+    try{ putBody=await file.arrayBuffer(); }catch(e){}
+    const putOpts={method:'PUT',body:putBody};
     if(upHeaders&&Object.keys(upHeaders).length) putOpts.headers=upHeaders;
     const upR=await fetch(up,putOpts);
     if(!upR.ok){ console.log('PUT失败',upR.status); return null; }
-    return fileUrl;
+    return {url:fileUrl, oss:ossName};
   }catch(e){ console.log('上传异常',e.message); return null; }
 }
 // 上传记录的附件并补写 files 字段
