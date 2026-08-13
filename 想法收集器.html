@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>💡 想法收集器 v3</title>
+<title>💡 想法收集器 v8</title>
 <style>
   :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2430;--mut:#7b8290;--line:#e4e7ec;
         --acc:#3a7afe;--ok:#1faa6b;--no:#e0533d;--chip:#eef2fb;--warn:#b06a00;}
@@ -89,7 +89,7 @@
 <body>
 <div class="wrap">
   <h1>💡 想法收集器 <span id="syncStat" class="sync off">📴 离线（本地）</span></h1>
-  <div class="sub">v3 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
+  <div class="sub">v8 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
 
   <div class="panel">
     <textarea id="noteInput" placeholder="在想什么？直接打字，或按住下面语音按钮说话…"></textarea>
@@ -544,30 +544,38 @@ function stopRecord(){
   try{ if(mediaRec&&mediaRec.state!=='inactive') mediaRec.stop(); }catch(e){}
   forceStopVoice();
 }
+function isMobile(){
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+}
 function toggleVoice(){
   if(recording){ forceStopVoice(); return; }
-  if(!voiceSupported()){
-    // iOS Safari → 录音模式
+  // 移动端（iPhone/安卓）→ 录音模式（可靠）
+  if(isMobile()){
     voiceMode='record';
     startRecord();
     return;
   }
-  // 支持原生识别
-  voiceMode='speech';
-  try{
-    if(!recog) recog=initRecognition();
-    recog.start();
-    recording=true;
-    document.getElementById('voiceBtn').textContent='⏹ 停止';
-    document.getElementById('voiceBtn').classList.add('recording');
-    document.getElementById('recordingBar').textContent='🎤 正在识别… 再点一次停止';
-    document.getElementById('recordingBar').style.display='block';
-  }catch(e){
-    recog=null; recording=false;
-    document.getElementById('voiceBtn').classList.remove('recording');
-    document.getElementById('recordingBar').style.display='none';
-    alert('语音启动失败：'+e.message);
+  // 桌面端且支持原生识别 → 语音转文字
+  if(voiceSupported()){
+    voiceMode='speech';
+    try{
+      if(!recog) recog=initRecognition();
+      recog.start();
+      recording=true;
+      document.getElementById('voiceBtn').textContent='⏹ 停止';
+      document.getElementById('voiceBtn').classList.add('recording');
+      document.getElementById('recordingBar').textContent='🎤 正在识别… 再点一次停止';
+      document.getElementById('recordingBar').style.display='block';
+      return;
+    }catch(e){
+      recog=null; recording=false;
+      document.getElementById('voiceBtn').classList.remove('recording');
+      document.getElementById('recordingBar').style.display='none';
+    }
   }
+  // 桌面端不支持识别 → 降级录音
+  voiceMode='record';
+  startRecord();
 }
 function forceStopVoice(){
   try{ if(recog){ recog.abort(); recog.onend=null; } }catch(e){}
