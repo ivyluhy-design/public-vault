@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>💡 想法收集器 v16</title>
+<title>💡 想法收集器 v17</title>
 <style>
   :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2430;--mut:#7b8290;--line:#e4e7ec;
         --acc:#3a7afe;--ok:#1faa6b;--no:#e0533d;--chip:#eef2fb;--warn:#b06a00;}
@@ -90,7 +90,7 @@
 <body>
 <div class="wrap">
   <h1>💡 想法收集器 <span id="syncStat" class="sync off">📴 离线（本地）</span></h1>
-  <div class="sub">v16 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
+  <div class="sub">v17 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
 
   <div class="panel">
     <textarea id="noteInput" placeholder="在想什么？直接打字，或按住下面语音按钮说话…"></textarea>
@@ -800,7 +800,8 @@ document.getElementById('saveBtn').onclick=()=>{
   if(!body&&!selectedFiles.length){alert('先写点什么，或选个文件');return;}
   const media=selectedFiles.map(sf=>({
     kind:sf.kind||(sf.type.startsWith('image')?'img':sf.type.startsWith('video')?'video':sf.type.startsWith('audio')?'voice':'pdf'),
-    url:'',name:sf.name,file:sf.file
+    url:'',name:sf.name,file:sf.file,
+    ocrText:sf.ocrText||''    // 关键修复：带上OCR文字
   }));
   saveRecord(body,media);
 };
