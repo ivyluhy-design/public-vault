@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>💡 想法收集器 v9</title>
+<title>💡 想法收集器 v10</title>
 <style>
   :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2430;--mut:#7b8290;--line:#e4e7ec;
         --acc:#3a7afe;--ok:#1faa6b;--no:#e0533d;--chip:#eef2fb;--warn:#b06a00;}
@@ -89,7 +89,7 @@
 <body>
 <div class="wrap">
   <h1>💡 想法收集器 <span id="syncStat" class="sync off">📴 离线（本地）</span></h1>
-  <div class="sub">v9 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
+  <div class="sub">v10 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
 
   <div class="panel">
     <textarea id="noteInput" placeholder="在想什么？直接打字，或按住下面语音按钮说话…"></textarea>
@@ -503,33 +503,42 @@ function showToast(msg, isErr){
   t._timer=setTimeout(()=>{ t.style.opacity='0'; }, 2600);
 }
 // iOS 录音（MediaRecorder）
+let recStream=null;
 async function startRecord(){
   try{
-    const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+    recStream=await navigator.mediaDevices.getUserMedia({audio:true});
     mediaChunks=[];
-    const mime=MediaRecorder.isTypeSupported('audio/mp4')?'audio/mp4':MediaRecorder.isTypeSupported('audio/webm')?'audio/webm':'audio/mp4';
-    mediaRec=new MediaRecorder(stream,{mimeType:mime});
-    mediaRec.ondataavailable=e=>{ if(e.data.size) mediaChunks.push(e.data); };
+    let mime='audio/mp4';
+    if(MediaRecorder.isTypeSupported('audio/mp4')) mime='audio/mp4';
+    else if(MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) mime='audio/webm;codecs=opus';
+    else if(MediaRecorder.isTypeSupported('audio/webm')) mime='audio/webm';
+    mediaRec=new MediaRecorder(recStream,{mimeType:mime});
+    mediaRec.ondataavailable=e=>{ if(e.data&&e.data.size) mediaChunks.push(e.data); };
     mediaRec.onstop=()=>{
-      const blob=new Blob(mediaChunks,{type:mediaRec.mimeType||'audio/mp4'});
-      const ext=mediaRec.mimeType.includes('mp4')?'m4a':mediaRec.mimeType.includes('webm')?'webm':'m4a';
+      // 用本地变量避免 mediaRec 被置空的问题
+      const chunks=mediaChunks.slice();
+      const recMime=mediaRec?mediaRec.mimeType:mime;
+      const blob=new Blob(chunks,{type:recMime||'audio/mp4'});
+      const ext=recMime.includes('mp4')?'m4a':recMime.includes('webm')?'webm':'m4a';
       const name='录音_'+new Date().toISOString().slice(5,16).replace(/[-:T]/g,'')+'.'+ext;
-      const file=new File([blob],name,{type:blob.type});
-      // 加入附件列表（kind=voice）
-      selectedFiles.push({name:name,size:blob.size,type:blob.type,file:file,kind:'voice'});
-      const names=selectedFiles.map(f=>f.name+'（'+Math.round(f.size/1024)+'KB）');
-      document.getElementById('attachInfo').textContent='📎 '+names.join(' · ');
-      // 释放麦克风
-      stream.getTracks().forEach(t=>t.stop());
-      // 完成反馈
-      const secs=Math.round(blob.size/16000);
-      showToast(blob.size>0 ? ('✅ 录音完成（'+(secs||1)+'秒），已加入附件。点「立即记录」上传') : '⚠️ 录音太短，请重试', blob.size<=0);
+      if(blob.size>0){
+        const file=new File([blob],name,{type:blob.type||'audio/mp4'});
+        selectedFiles.push({name:name,size:blob.size,type:blob.type||'audio/mp4',file:file,kind:'voice'});
+        const names=selectedFiles.map(f=>f.name+'（'+Math.round(f.size/1024)+'KB）');
+        document.getElementById('attachInfo').textContent='📎 '+names.join(' · ');
+        const secs=Math.round(blob.size/16000);
+        showToast('✅ 录音完成（'+(secs||1)+'秒），已加入附件，点「立即记录」上传');
+      } else {
+        showToast('⚠️ 录音为空，请重试', true);
+      }
+      try{ recStream.getTracks().forEach(t=>t.stop()); }catch(e){}
+      recStream=null;
     };
     mediaRec.onerror=e=>{
       showToast('录音出错：'+(e.error&&e.error.message||'未知'), true);
       forceStopVoice();
     };
-    mediaRec.start();
+    mediaRec.start(250);   // timeslice 250ms，定期收集数据
     recording=true;
     document.getElementById('voiceBtn').textContent='⏹ 停止录音';
     document.getElementById('voiceBtn').classList.add('recording');
@@ -578,9 +587,14 @@ function toggleVoice(){
   startRecord();
 }
 function forceStopVoice(){
-  try{ if(recog){ recog.abort(); recog.onend=null; } }catch(e){}
-  try{ if(mediaRec&&mediaRec.state!=='inactive') mediaRec.stop(); }catch(e){}
-  recog=null; mediaRec=null;
+  try{ if(recog){ recog.abort(); recog.onend=null; recog=null; } }catch(e){}
+  if(mediaRec&&mediaRec.state!=='inactive'){
+    const mr=mediaRec;
+    mediaRec=null;               // 先置空避免重复
+    try{ mr.stop(); }catch(e){}  // stop 异步，onstop 会拿到 chunks
+  } else {
+    mediaRec=null;
+  }
   recording=false;
   document.getElementById('voiceBtn').textContent='🎤 语音';
   document.getElementById('voiceBtn').classList.remove('recording');
