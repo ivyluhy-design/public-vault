@@ -331,19 +331,30 @@ function initRecognition(){
     for(let i=0;i<e.results.length;i++) txt+=e.results[i][0].transcript;
     document.getElementById('noteInput').value=txt;
   };
-  r.onerror=e=>{stopVoice();if(e.error==='not-allowed')alert('需要麦克风权限');};
+  r.onerror=e=>{forceStopVoice();if(e.error==='not-allowed')alert('需要麦克风权限');};
+  r.onend=()=>{ /* 识别自然结束时也重置状态 */ if(recording) forceStopVoice(); };
   return r;
 }
 function toggleVoice(){
-  if(recording){stopVoice();return;}
-  if(!recog) recog=initRecognition();
-  if(!recog) return;
-  recog.start();recording=true;
-  document.getElementById('voiceBtn').classList.add('recording');
-  document.getElementById('recordingBar').style.display='block';
+  if(recording){forceStopVoice();return;}
+  try{
+    if(!recog) recog=initRecognition();
+    if(!recog) return;
+    recog.start();
+    recording=true;
+    document.getElementById('voiceBtn').classList.add('recording');
+    document.getElementById('recordingBar').style.display='block';
+  }catch(e){
+    // start 抛异常（如未授权），强制重置状态，避免卡死
+    recog=null; recording=false;
+    document.getElementById('voiceBtn').classList.remove('recording');
+    document.getElementById('recordingBar').style.display='none';
+    alert('语音启动失败：'+e.message);
+  }
 }
-function stopVoice(){
-  if(recog)recog.stop();
+function forceStopVoice(){
+  try{ if(recog){ recog.abort(); recog.onend=null; } }catch(e){}
+  recog=null;   // 重建实例，彻底断开
   recording=false;
   document.getElementById('voiceBtn').classList.remove('recording');
   document.getElementById('recordingBar').style.display='none';
