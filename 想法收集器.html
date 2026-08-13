@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>💡 想法收集器 v12</title>
+<title>💡 想法收集器 v13</title>
 <style>
   :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2430;--mut:#7b8290;--line:#e4e7ec;
         --acc:#3a7afe;--ok:#1faa6b;--no:#e0533d;--chip:#eef2fb;--warn:#b06a00;}
@@ -85,17 +85,19 @@
   .recording-bar{position:fixed;left:0;right:0;bottom:0;background:#fde8e7;color:var(--no);
     text-align:center;padding:14px;font-size:15px;font-weight:600;z-index:98;display:none}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 </head>
 <body>
 <div class="wrap">
   <h1>💡 想法收集器 <span id="syncStat" class="sync off">📴 离线（本地）</span></h1>
-  <div class="sub">v12 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
+  <div class="sub">v13 · 三秒记一条 · 先记录后整理 · 数据存息流</div>
 
   <div class="panel">
     <textarea id="noteInput" placeholder="在想什么？直接打字，或按住下面语音按钮说话…"></textarea>
     <div class="recbar">
       <button class="rbtn" id="voiceBtn">🎤 语音</button>
       <button class="rbtn" id="attachBtn" style="background:#eef7ee;color:#1a8a4a">📎 添加附件</button>
+      <button class="rbtn" id="ocrBtn" style="background:#f3e9fb;color:#7a3ab0">✨ OCR转文字</button>
       <button class="rbtn primary" id="saveBtn" style="margin-left:auto">💾 立即记录</button>
     </div>
     <div class="attachinfo" id="attachInfo"></div>
@@ -464,6 +466,56 @@ function handleFileSelect(e){
   document.getElementById('attachInfo').textContent='📎 '+names.join(' · ');
 }
 
+// ============ OCR 转文字（Tesseract.js 本地识别） ============
+let ocrWorker=null;
+async function getOcrWorker(){
+  if(ocrWorker) return ocrWorker;
+  showToast('🔄 加载OCR引擎(首次约15MB)…');
+  try{
+    ocrWorker=await Tesseract.createWorker('chi_sim+eng',1,{logger:m=>{
+      if(m.status==='recognizing text'){ /* 进度 */ }
+    }});
+    showToast('✅ OCR引擎就绪');
+    return ocrWorker;
+  }catch(e){
+    showToast('⚠️ OCR加载失败:'+e.message,true);
+    return null;
+  }
+}
+async function ocrImage(file){
+  const w=await getOcrWorker();
+  if(!w) return '';
+  try{
+    showToast('🔍 正在识别文字…');
+    const {data}=await w.recognize(file);
+    showToast('✅ OCR完成');
+    return (data.text||'').trim();
+  }catch(e){
+    showToast('⚠️ OCR识别失败:'+e.message,true);
+    return '';
+  }
+}
+async function ocrPdf(file){
+  // PDF 渲染成图片再 OCR（简单版：只处理第一页或提示）
+  showToast('⚠️ PDF OCR 需逐页渲染，暂时只处理图片', true);
+  return '';
+}
+// OCR 入口：识别当前附件列表中的图片/PDF，文字进要点
+async function doOcr(){
+  const imgs=selectedFiles.filter(f=>f.type.startsWith('image/'));
+  if(!imgs.length){ showToast('请先添加图片附件', true); return; }
+  const note=document.getElementById('noteInput');
+  let all='';
+  for(const img of imgs){
+    const txt=await ocrImage(img.file);
+    if(txt) all+=(all?'\n':'')+txt;
+  }
+  if(all){
+    note.value=note.value?note.value+'\n'+all:all;
+    showToast('✅ 已识别 '+imgs.length+' 张图，文字已填入');
+  }
+}
+
 // ============ 语音（优先原生识别；iOS Safari 降级为录音） ============
 let recog=null,recording=false;
 let mediaRec=null,mediaChunks=[];
@@ -704,6 +756,7 @@ document.getElementById('attachBtn').onclick=()=>{
   document.getElementById('fileInput').accept='image/*,video/*,audio/*,application/pdf';
   document.getElementById('fileInput').click();
 };
+document.getElementById('ocrBtn').onclick=doOcr;
 document.getElementById('fileInput').onchange=handleFileSelect;
 document.getElementById('laterBtn').onclick=()=>{closeModal();};
 document.getElementById('organizeSaveBtn').onclick=()=>{applyOrganize();closeModal();};
