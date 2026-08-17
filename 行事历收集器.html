@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>📅 行事历收集器 v1</title>
+<style>
+  :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2430;--mut:#7b8290;--line:#e4e7ec;
+        --acc:#3a7afe;--ok:#1faa6b;--no:#e0533d;--chip:#eef2fb;--warn:#b06a00;}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       background:var(--bg);color:var(--ink);line-height:1.6}
+  .wrap{max-width:720px;margin:0 auto;padding:16px 14px 110px}
+  h1{font-size:20px;margin:4px 0 2px;display:flex;align-items:center;gap:8px}
+  .sub{color:var(--mut);font-size:13px;margin-bottom:14px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;
+         padding:14px 16px;margin-bottom:12px}
+  .panel h3{margin:0 0 10px;font-size:14px;color:var(--mut);display:flex;align-items:center;gap:6px}
+  label.f{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+  input[type=text],input[type=datetime-local],textarea,select{
+    width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:10px;
+    font-size:15px;font-family:inherit;background:#fff;outline:none}
+  input:focus,textarea:focus,select:focus{border-color:var(--acc)}
+  textarea{min-height:60px;resize:vertical}
+  .row2{display:flex;gap:10px}
+  .row2>*{flex:1}
+  .recbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+  .rbtn{cursor:pointer;border:none;border-radius:12px;padding:10px 14px;font-size:14px;
+        font-weight:600;font-family:inherit;background:var(--chip);color:var(--ink)}
+  .rbtn.recording{background:#fde8e7;color:var(--no);animation:pulse 1s infinite}
+  @keyframes pulse{50%{opacity:.5}}
+  .rbtn.primary{background:var(--acc);color:#fff}
+  .rbtn:disabled{opacity:.4;cursor:default}
+  .attachinfo{font-size:12px;color:var(--mut);margin-top:8px;word-break:break-all}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+  .chip{cursor:pointer;font-size:12px;padding:6px 11px;border-radius:16px;
+        background:var(--chip);color:var(--mut);user-select:none}
+  .chip.on{background:var(--acc);color:#fff}
+  .togglebtn{cursor:pointer;font-size:12px;color:var(--acc);margin-top:6px;user-select:none}
+  .hide{display:none}
+  .savebig{position:sticky;top:8px;width:100%;padding:14px;border:none;border-radius:14px;
+    background:var(--acc);color:#fff;font-size:16px;font-weight:700;cursor:pointer;
+    box-shadow:0 4px 14px rgba(58,122,254,.35);margin-bottom:12px}
+  /* 时间线 */
+  .tl-card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+           padding:12px 14px;margin-bottom:10px}
+  .tl-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:8px;
+       background:var(--chip);color:var(--acc);margin-right:4px}
+  .tag.type{background:#eef7ee;color:var(--ok)}
+  .tag.cat{background:#fff3e0;color:var(--warn)}
+  .tl-time{color:var(--mut);font-size:12px;margin-left:auto}
+  .tl-body{font-size:14px;white-space:pre-wrap;word-break:break-word}
+  .tl-media{margin-top:6px;display:flex;gap:8px;flex-wrap:wrap}
+  .tl-media img{max-width:120px;border-radius:8px;border:1px solid var(--line)}
+  .tl-media video{max-width:200px;border-radius:8px}
+  .empty{color:var(--mut);text-align:center;padding:30px 0}
+  .sync{font-size:12px;padding:3px 9px;border-radius:20px;font-weight:600;align-self:center}
+  .sync.on{background:#e7f7ec;color:#1a8a4a}
+  .sync.off{background:#f0f0f0;color:#888}
+  .recording-bar{position:fixed;left:0;right:0;bottom:0;background:#fde8e7;color:var(--no);
+    text-align:center;padding:14px;font-size:15px;font-weight:600;z-index:98;display:none}
+  .toast{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:999;
+    padding:10px 18px;border-radius:10px;font-size:14px;font-weight:600;color:#fff;
+    box-shadow:0 4px 16px rgba(0,0,0,.2);max-width:85vw;text-align:center;opacity:0;
+    transition:opacity .3s;pointer-events:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📅 行事历收集器 <span id="syncStat" class="sync off">📴 离线（本地）</span></h1>
+  <div class="sub">v1 · 随手记一条日程 / 传图·视频·录音 · 直接入「说人话」行事历库</div>
+
+  <button class="savebig" id="saveBtn">✅ 立即记录</button>
+
+  <div class="panel">
+    <h3>① 核心</h3>
+    <label class="f">标题 *</label>
+    <input type="text" id="fTitle" placeholder="这条日程是什么？">
+
+    <div class="row2">
+      <div>
+        <label class="f">开始时间</label>
+        <input type="datetime-local" id="fStart">
+      </div>
+      <div>
+        <label class="f">结束时间</label>
+        <input type="datetime-local" id="fEnd">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div>
+        <label class="f">模块</label>
+        <select id="fModule">
+          <option>工作</option><option>生活</option><option>学习</option>
+          <option>每日总结</option><option>碎碎念</option>
+        </select>
+      </div>
+      <div>
+        <label class="f">状态</label>
+        <select id="fStatus">
+          <option>收集箱</option><option>待处理</option><option>进行中</option>
+          <option>已完成</option><option>测试</option><option>📌备份勿删</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>② 标签 <span class="togglebtn" id="tagToggle">▾ 展开</span></h3>
+    <div id="tagBox" class="hide">
+      <div class="row2">
+        <div>
+          <label class="f">优先级</label>
+          <select id="fPriority">
+            <option>中</option><option>高</option><option>低</option><option>青蛙</option>
+          </select>
+        </div>
+        <div>
+          <label class="f">日历（是否上日历）</label>
+          <select id="fCal">
+            <option>Y</option><option>N</option>
+          </select>
+        </div>
+      </div>
+
+      <label class="f">是否加班（仅「是」可填，留空=不加班）</label>
+      <select id="fOT">
+        <option value="">（不填）</option>
+        <option>是  周末加班</option>
+        <option>是 日常加班</option>
+      </select>
+
+      <label class="f">工作类型（可多选）</label>
+      <div class="chips" id="cWorkType"></div>
+
+      <label class="f">工作属性（可多选）</label>
+      <div class="chips" id="cWorkAttr"></div>
+
+      <label class="f">日常学习类型（可多选）</label>
+      <div class="chips" id="cStudyType"></div>
+
+      <label class="f">协助人员（可多选）</label>
+      <div class="chips" id="cHelper"></div>
+
+      <label class="f">备注</label>
+      <textarea id="fNote" placeholder="补充说明…"></textarea>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>③ 附件（图 / 视频 / 录音 / PDF）</h3>
+    <div class="recbar">
+      <button class="rbtn" id="voiceBtn">🎤 录音</button>
+      <button class="rbtn" id="attachBtn" style="background:#eef7ee;color:#1a8a4a">📎 添加附件</button>
+      <button class="rbtn" id="clearBtn" style="background:#f0f0f3;color:#888">🗑 清空附件</button>
+    </div>
+    <div class="attachinfo" id="attachInfo"></div>
+    <input type="file" id="fileInput" accept="image/*,video/*,audio/*,application/pdf" style="display:none" multiple>
+  </div>
+
+  <div id="timeline"></div>
+</div>
+
+<div class="recording-bar" id="recordingBar">🎙 正在录音… 再点一次「⏹ 停止录音」结束</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ 配置（与想法收集器同一套 token / 同一个库体系） ============
+const FLOWUS={TOKEN:'dAyB76Qzg9JYviuGy1wgd5AYaCwweBN7eX9cFVEd',
+  DB:'98cd33bd-bab6-40c6-9cb6-98304be6bafb',API:'https://api.flowus.cn'};
+const TOKEN_KEY='xl_fu_token_v1';
+const LS_CARDS='xl_cards_v1';
+const LS_FILES='xl_files_v1';
+if(localStorage.getItem(TOKEN_KEY)) FLOWUS.TOKEN=localStorage.getItem(TOKEN_KEY);
+
+// 行事历库真实可选项（已 pull database 确认）
+const OPTS={
+  workType:['会议','文字材料','汇报','活动','纸质版资料','现场办公','调研','制度','假期','日常工作','出差'],
+  workAttr:['有文件','有项目文件','视频会议','现场会议','假日','备忘','招聘','日常','活动','数据分析','日常项目'],
+  studyType:['专业技能','日常记录','待办','AI技能'],
+  helper:['本部门','IT','销售分析','人力','销售运作','管理层']
+};
+const MSELECT_IDS={
+  cWorkType:'工作类型', cWorkAttr:'工作属性', cStudyType:'日常学习类型', cHelper:'协助人员'
+};
+const OPTSKEY={'工作类型':'workType','工作属性':'workAttr','日常学习类型':'studyType','协助人员':'helper'};
+let selectedM={工作类型:[],工作属性:[],日常学习类型:[],协助人员:[]};
+let selectedFiles=[];
+let records=[];
+let mediaStore={};
+let fuOnline=false;
+
+// ============ 工具 ============
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function uidOf(r){return (r.t||'')+'_'+(r.start||'');}
+function fuHeaders(){return {'Authorization':'Bearer '+FLOWUS.TOKEN,'Content-Type':'application/json'};}
+function fuRich(x){x=(x||'').trim();return x?[{type:'text',text:{content:x},plain_text:x}]:[];}
+function nowLocal(){
+  const d=new Date();const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+p(d.getHours())+':'+p(d.getMinutes());
+}
+function loadLocal(){
+  try{records=JSON.parse(localStorage.getItem(LS_CARDS)||'[]');}catch(e){records=[];}
+  try{mediaStore=JSON.parse(localStorage.getItem(LS_FILES)||'{}');}catch(e){mediaStore={};}
+}
+function saveLocal(){
+  localStorage.setItem(LS_CARDS,JSON.stringify(records));
+  localStorage.setItem(LS_FILES,JSON.stringify(mediaStore));
+}
+function toast(msg,isErr){
+  const t=document.getElementById('toast');
+  t.style.background=isErr?'#e0533d':'#1faa6b';
+  t.textContent=msg;t.style.opacity='1';
+  clearTimeout(t._timer);t._timer=setTimeout(()=>t.style.opacity='0',2600);
+}
+function updateSyncStat(){
+  const el=document.getElementById('syncStat');
+  el.textContent=fuOnline?'🔄 已同步行事历':'📴 离线（本地）';
+  el.className='sync '+(fuOnline?'on':'off');
+}
+
+// ============ FlowUs 直连层（复用想法收集器验证过的 upload-url → PUT → 文件块） ============
+async function fuQueryAll(){
+  let rows=[],body={};
+  for(let i=0;i<25;i++){
+    const r=await fetch(FLOWUS.API+'/v2/databases/'+FLOWUS.DB+'/query',{method:'POST',headers:fuHeaders(),body:JSON.stringify(body)});
+    if(!r.ok) throw new Error('query '+r.status);
+    const j=await r.json();
+    rows=rows.concat((j.results)||(j.data&&j.data.results)||[]);
+    if(j.has_more||(j.data&&j.data.has_more)){body={start_cursor:(j.next_cursor)||(j.data&&j.data.next_cursor)};} else break;
+  }
+  return rows;
+}
+function fuField(row,name){
+  const f=(row.properties||{})[name];if(!f)return '';
+  if(f.title)return (f.title[0]&&f.title[0].plain_text)||'';
+  if(f.rich_text)return (f.rich_text[0]&&f.rich_text[0].plain_text)||'';
+  if(f.select)return f.select.name||'';
+  return '';
+}
+function fuFilesOf(row,name){
+  const f=(row.properties||{})[name];if(!f||!f.files)return [];
+  return f.files.map(o=>(o.file&&o.file.url)||(o.external&&o.external.url)||'').filter(Boolean);
+}
+async function pullFlowus(){
+  try{
+    const rows=await fuQueryAll();
+    const seen=new Set(),merged=[];
+    rows.forEach(row=>{
+      const t=fuField(row,'标题');
+      const start=(row.properties&&row.properties['开始时间']&&row.properties['开始时间'].date&&row.properties['开始时间'].date.start)||'';
+      const u=(t||'')+'_'+start;
+      if(seen.has(u))return;seen.add(u);
+      merged.push({
+        t:t,start:start,
+        module:fuField(row,'模块'),status:fuField(row,'状态'),
+        prio:fuField(row,'优先级'),cal:fuField(row,'日历'),
+        note:fuField(row,'备注'),
+        files:fuFilesOf(row,'文件'),
+        _fid:row.id,_synced:true
+      });
+    });
+    const uidSet=new Set(merged.map(r=>uidOf(r)));
+    records.forEach(r=>{if(!uidSet.has(uidOf(r))){merged.push(r);uidSet.add(uidOf(r));}});
+    records=merged.filter((r,i,a)=>a.findIndex(x=>uidOf(x)===uidOf(r))===i);
+    saveLocal();fuOnline=true;
+  }catch(e){fuOnline=false;}
+  updateSyncStat();render();
+}
+async function uploadFileToFlowUs(file, fid){
+  try{
+    let mime=file.type||'application/octet-stream';
+    if(mime==='audio/mp4'||mime==='audio/x-m4a')mime='audio/mpeg';
+    const r=await fetch(FLOWUS.API+'/v2/files/upload-url',{method:'POST',headers:fuHeaders(),
+      body:JSON.stringify({filename:file.name,content_type:mime,content_length:file.size,parent:{type:'page_id',page_id:fid||''}})});
+    if(!r.ok){console.log('upload-url失败',r.status);toast('上传失败1:'+r.status,true);return null;}
+    const j=await r.json();
+    const up=(j.data&&j.data.upload_url)||j.upload_url;
+    const fileUrl=(j.data&&j.data.file_url)||j.file_url;
+    const ossName=(j.data&&j.data.oss_name)||j.oss_name;
+    if(!up||!fileUrl)return null;
+    const upHeaders=(j.data&&j.data.headers)||j.headers||{};
+    let putBody=file;try{putBody=await file.arrayBuffer();}catch(e){}
+    const putOpts={method:'PUT',body:putBody};
+    if(upHeaders&&Object.keys(upHeaders).length)putOpts.headers=upHeaders;
+    const upR=await fetch(up,putOpts);
+    if(!upR.ok){console.log('PUT失败',upR.status);toast('上传失败2:'+upR.status,true);return null;}
+    return {url:fileUrl,oss:ossName};
+  }catch(e){console.log('上传异常',e.message);return null;}
+}
+async function appendFileBlock(fid,name,oss,size){
+  try{
+    const body={children:[{object:'block',type:'file',file:{type:'file',file:{oss_name:oss,size:size||0}}}]};
+    const r=await fetch(FLOWUS.API+'/v2/blocks/'+fid+'/children',{method:'PATCH',headers:fuHeaders(),body:JSON.stringify(body)});
+    return r.ok;
+  }catch(e){return false;}
+}
+async function fuCreate(props){
+  try{
+    const body={parent:{database_id:FLOWUS.DB},properties:props};
+    const r=await fetch(FLOWUS.API+'/v2/pages',{method:'POST',headers:fuHeaders(),body:JSON.stringify(body)});
+    if(r.ok){const j=await r.json();return (j.data&&j.data.id)||j.id;}
+  }catch(e){}
+  return null;
+}
+// 构造行事历库字段（每条都带显式 type，否则 Invalid database page properties）
+function buildProps(rec,fileUrls){
+  const p={};
+  p['标题']={type:'title',title:[{type:'text',text:{content:rec.t||'无标题'},plain_text:rec.t||'无标题'}]};
+  if(rec.module)p['模块']={type:'select',select:{name:rec.module}};
+  if(rec.status)p['状态']={type:'select',select:{name:rec.status}};
+  if(rec.prio)p['优先级']={type:'select',select:{name:rec.prio}};
+  if(rec.cal)p['日历']={type:'select',select:{name:rec.cal}};
+  if(rec.ot)p['是否加班']={type:'select',select:{name:rec.ot}};
+  if(rec.start)p['开始时间']={type:'date',date:{start:rec.start,end:null,time_zone:null}};
+  if(rec.end)p['结束时间']={type:'date',date:{start:rec.end,end:null,time_zone:null}};
+  if(rec.note)p['备注']={type:'rich_text',rich_text:fuRich(rec.note)};
+  for(const k of ['工作类型','工作属性','日常学习类型','协助人员']){
+    const arr=rec[k];
+    if(arr&&arr.length)p[k]={type:'multi_select',multi_select:arr.map(n=>({name:n}))};
+  }
+  // 附件挂到 文件 字段（external 格式，表格行可见）
+  if(fileUrls&&fileUrls.length){
+    p['文件']={type:'files',files:fileUrls.map(f=>({name:f.name,type:'external',external:{url:f.url}}))};
+  }
+  // 登记端：标记来自这个收集器
+  p['登记端']={type:'select',select:{name:'小程序WB'}};
+  return p;
+}
+
+// ============ 记录 ============
+const pushedUids=new Set();
+async function pushRecord(rec){
+  const u=uidOf(rec);
+  if(pushedUids.has(u))return;
+  if(!FLOWUS.TOKEN)return;
+  pushedUids.add(u);
+  // 1) 先建行（含所有字段，附件先空）
+  const fid=await fuCreate(buildProps(rec,[]));
+  if(!fid){pushedUids.delete(u);return;}
+  rec._fid=fid;
+  // 2) 逐文件上传 → 挂文件块 + 收集 url
+  const media=rec.media||[];
+  const uploaded=[];
+  for(const m of media){
+    if(!m.file)continue;
+    const r=await uploadFileToFlowUs(m.file, fid);
+    if(r&&r.oss&&r.url){
+      await appendFileBlock(fid,m.name,r.oss,m.file.size||0);
+      uploaded.push({name:m.name,url:r.url});
+    }else{
+      toast('⚠️ 附件上传失败: '+m.name,true);
+    }
+  }
+  // 3) 回写 文件 字段（让表格行显示附件）
+  if(uploaded.length){
+    try{
+      const pr=await fetch(FLOWUS.API+'/v2/pages/'+fid,{method:'PATCH',headers:fuHeaders(),
+        body:JSON.stringify({properties:{'文件':{type:'files',files:uploaded.map(f=>({name:f.name,type:'external',external:{url:f.url}}))}}})});
+      if(pr.ok)toast('✅ 附件已同步到文件字段');
+    }catch(e){}
+  }
+  if(!rec._synced){rec._synced=true;saveLocal();}
+}
+function saveRecord(){
+  const title=document.getElementById('fTitle').value.trim();
+  if(!title&&!selectedFiles.length){alert('先填标题或选附件');return;}
+  const t=title||selectedFiles[0].name.replace(/\.[^.]+$/,'');
+  const start=document.getElementById('fStart').value;
+  const end=document.getElementById('fEnd').value;
+  const rec={
+    t:t,
+    module:document.getElementById('fModule').value,
+    status:document.getElementById('fStatus').value,
+    prio:document.getElementById('fPriority').value,
+    cal:document.getElementById('fCal').value,
+    ot:document.getElementById('fOT').value||undefined,
+    note:document.getElementById('fNote').value.trim(),
+    start:start?start+':00':undefined,
+    end:end?end+':00':undefined,
+    工作类型:selectedM['工作类型'],
+    工作属性:selectedM['工作属性'],
+    日常学习类型:selectedM['日常学习类型'],
+    协助人员:selectedM['协助人员'],
+    media:selectedFiles.map(sf=>({name:sf.name,file:sf.file})),
+    _synced:false
+  };
+  records.unshift(rec);
+  if(selectedFiles.length)mediaStore[uidOf(rec)]=selectedFiles;
+  saveLocal();
+  pushRecord(rec);
+  toast('✅ 已记下：'+(rec.t||''));
+  // 清空表单（保留默认项）
+  document.getElementById('fTitle').value='';
+  document.getElementById('fNote').value='';
+  document.getElementById('fStart').value=nowLocal();
+  document.getElementById('fEnd').value='';
+  document.getElementById('fOT').value='';
+  document.getElementById('fModule').value='工作';
+  document.getElementById('fStatus').value='收集箱';
+  document.getElementById('fPriority').value='中';
+  document.getElementById('fCal').value='Y';
+  clearChips();
+  clearAttach();
+  render();
+}
+
+// ============ 附件处理 ============
+function clearAttach(){selectedFiles=[];document.getElementById('attachInfo').textContent='';}
+function handleFileSelect(e){
+  const files=[...e.target.files];e.target.value='';
+  if(!files.length)return;
+  files.forEach(f=>selectedFiles.push({name:f.name,size:f.size,type:f.type,file:f}));
+  document.getElementById('attachInfo').textContent='📎 '+selectedFiles.map(f=>f.name+'（'+Math.round(f.size/1024)+'KB）').join(' · ');
+}
+
+// ============ 语音（移动端录音；桌面端降级录音） ============
+let mediaRec=null,mediaChunks=[],recStream=null,recording=false;
+function isMobile(){return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);}
+async function startRecord(){
+  try{
+    recStream=await navigator.mediaDevices.getUserMedia({audio:true});
+    mediaChunks=[];
+    let mime='audio/mp4';
+    if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/mp4'))mime='audio/mp4';
+    else if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/webm;codecs=opus'))mime='audio/webm;codecs=opus';
+    else if(MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported('audio/webm'))mime='audio/webm';
+    mediaRec=new MediaRecorder(recStream,{mimeType:mime});
+    mediaRec.ondataavailable=e=>{if(e.data&&e.data.size)mediaChunks.push(e.data);};
+    mediaRec.onstop=()=>{
+      const chunks=mediaChunks.slice();const recMime=mediaRec?mediaRec.mimeType:mime;
+      const blob=new Blob(chunks,{type:recMime||'audio/mp4'});
+      const ext=recMime.includes('mp4')?'m4a':recMime.includes('webm')?'webm':'m4a';
+      const name='录音_'+new Date().toISOString().slice(5,16).replace(/[-:T]/g,'')+'.'+ext;
+      if(blob.size>0){
+        const file=new File([blob],name,{type:blob.type||'audio/mp4'});
+        selectedFiles.push({name:name,size:blob.size,type:blob.type||'audio/mp4',file:file});
+        document.getElementById('attachInfo').textContent='📎 '+selectedFiles.map(f=>f.name+'（'+Math.round(f.size/1024)+'KB）').join(' · ');
+        toast('✅ 录音完成（'+Math.round(blob.size/16000)+'秒），点「立即记录」上传');
+      }else{toast('⚠️ 录音为空',true);}
+      try{recStream.getTracks().forEach(t=>t.stop());}catch(e){}
+      recStream=null;
+    };
+    mediaRec.start(250);
+    recording=true;
+    document.getElementById('voiceBtn').textContent='⏹ 停止录音';
+    document.getElementById('voiceBtn').classList.add('recording');
+    document.getElementById('recordingBar').style.display='block';
+  }catch(e){toast('无法录音：'+e.message,true);forceStopVoice();}
+}
+function stopRecord(){try{if(mediaRec&&mediaRec.state!=='inactive')mediaRec.stop();}catch(e){}forceStopVoice();}
+function toggleVoice(){
+  if(recording){forceStopVoice();return;}
+  if(isMobile()||!window.SpeechRecognition){startRecord();return;}
+  // 桌面端也直接录音（日程场景录音更有用）
+  startRecord();
+}
+function forceStopVoice(){
+  if(mediaRec&&mediaRec.state!=='inactive'){const mr=mediaRec;mediaRec=null;try{mr.stop();}catch(e){}}
+  else{mediaRec=null;}
+  recording=false;
+  document.getElementById('voiceBtn').textContent='🎤 录音';
+  document.getElementById('voiceBtn').classList.remove('recording');
+  document.getElementById('recordingBar').style.display='none';
+}
+
+// ============ chips ============
+function buildChips(){
+  for(const id of Object.keys(MSELECT_IDS)){
+    const box=document.getElementById(id);box.innerHTML='';
+    const key=MSELECT_IDS[id];
+    (OPTS[OPTSKEY[key]]||[]).forEach(opt=>{
+      const el=document.createElement('span');
+      el.className='chip';el.textContent=opt;
+      el.onclick=()=>{
+        el.classList.toggle('on');
+        const arr=selectedM[key];
+        const i=arr.indexOf(opt);
+        if(i>=0)arr.splice(i,1);else arr.push(opt);
+      };
+      box.appendChild(el);
+    });
+  }
+}
+function clearChips(){
+  for(const k of Object.keys(selectedM))selectedM[k]=[];
+  document.querySelectorAll('.chip.on').forEach(c=>c.classList.remove('on'));
+}
+
+// ============ 渲染时间线 ============
+function render(){
+  const box=document.getElementById('timeline');
+  if(!records.length){box.innerHTML='<div class="empty">还没有日程。上面填一条，或传张图/录段音～</div>';return;}
+  box.innerHTML=records.map(r=>{
+    const u=uidOf(r);
+    const m=mediaStore[u]||[];
+    const tags=(r.module?`<span class="tag cat">${esc(r.module)}</span>`:'')+
+      (r.status?`<span class="tag">${esc(r.status)}</span>`:'')+
+      (r.prio?`<span class="tag type">${esc(r.prio)}</span>`:'')+
+      (r.cal==='N'?`<span class="tag">不上日历</span>`:'');
+    const imgs=m.filter(x=>x.type&&x.type.startsWith('image')).map(x=>`<img src="${esc(URL.createObjectURL(x.file))}">`).join('');
+    const vids=m.filter(x=>x.type&&x.type.startsWith('video')).map(x=>`<video src="${esc(URL.createObjectURL(x.file))}" controls></video>`).join('');
+    const auds=m.filter(x=>x.type&&x.type.startsWith('audio')).map(x=>`<audio src="${esc(URL.createObjectURL(x.file))}" controls></audio>`).join('');
+    return `<div class="tl-card">
+      <div class="tl-top">${tags}<span class="tl-time">${esc(r.start||'')}</span></div>
+      <div class="tl-body">${esc(r.t||'（无标题）')}</div>
+      <div class="tl-media">${imgs}${vids}${auds}</div>
+    </div>`;
+  }).join('');
+}
+
+// ============ 事件 ============
+document.getElementById('saveBtn').onclick=saveRecord;
+document.getElementById('voiceBtn').onclick=toggleVoice;
+document.getElementById('attachBtn').onclick=()=>document.getElementById('fileInput').click();
+document.getElementById('fileInput').onchange=handleFileSelect;
+document.getElementById('clearBtn').onclick=clearAttach;
+document.getElementById('tagToggle').onclick=()=>{
+  const box=document.getElementById('tagBox');
+  const hidden=box.classList.toggle('hide');
+  document.getElementById('tagToggle').textContent=hidden?'▾ 展开':'▴ 收起';
+};
+
+// ============ 启动 ============
+document.getElementById('fStart').value=nowLocal();
+loadLocal();
+buildChips();
+render();
+if(!FLOWUS.TOKEN){updateSyncStat();}
+else{pullFlowus();setInterval(pullFlowus,30000);}
+</script>
+</body>
+</html>
